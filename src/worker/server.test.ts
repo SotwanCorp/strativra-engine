@@ -173,17 +173,20 @@ test("with ENGINE_API_KEY set, /scans requires the bearer key; reports stay publ
   const s = createWorkerServer({
     config: { secret: SECRET, siteOrigin: ORIGIN, trustProxy: true, apiKey: "k-0123456789abcdef" },
     queue: c.queue, limits: c.limits, storage: new LocalStorage(tmp()), pipeline: fakePipeline(),
-    verifyTurnstile: async () => true,
+    verifyTurnstile: async () => false,
   });
   await new Promise<void>((r) => s.listen(0, "127.0.0.1", r));
   const b = `http://127.0.0.1:${(s.address() as AddressInfo).port}`;
   try {
-    const body = JSON.stringify({ url: "https://keyed.example.com/", email: "a@example.com", turnstileToken: "t" });
+    // The site vouches (no token) on an authenticated call; a token, when sent, is still verified.
+    const body = JSON.stringify({ url: "https://keyed.example.com/", email: "a@example.com" });
     const headers = { "content-type": "application/json", "x-forwarded-for": "198.51.100.250" };
     assert.equal((await fetch(`${b}/scans`, { method: "POST", headers, body })).status, 401);
     assert.equal((await fetch(`${b}/scans`, { method: "POST", headers: { ...headers, authorization: "Bearer wrong" }, body })).status, 401);
     const ok = await fetch(`${b}/scans`, { method: "POST", headers: { ...headers, authorization: "Bearer k-0123456789abcdef" }, body });
     assert.equal(ok.status, 202);
+    const withBadToken = JSON.stringify({ url: "https://keyed2.example.com/", email: "b@example.com", turnstileToken: "bad" });
+    assert.equal((await fetch(`${b}/scans`, { method: "POST", headers: { ...headers, "x-forwarded-for": "198.51.100.251", authorization: "Bearer k-0123456789abcdef" }, body: withBadToken })).status, 403);
     assert.equal((await fetch(`${b}/r/not-a-real-token-but-long-enough`)).status, 404);
   } finally {
     s.close();

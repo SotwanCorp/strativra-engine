@@ -126,7 +126,9 @@ export function createWorkerServer(d: ServerDeps): Server {
 
     if (limited(d.limits.check(hashes, d.queue.depth()))) return;
 
-    const human = await d.verifyTurnstile(typeof turnstileToken === "string" ? turnstileToken : undefined, ip === "unknown" ? undefined : ip);
+    // An authenticated site call (ENGINE_API_KEY) without a token: the site ran its own bot checks.
+    const siteVouched = !!apiKey && (typeof turnstileToken !== "string" || turnstileToken === "");
+    const human = siteVouched || (await d.verifyTurnstile(typeof turnstileToken === "string" ? turnstileToken : undefined, ip === "unknown" ? undefined : ip));
     if (!human) return json(res, 403, { error: "turnstile_failed" }, h);
 
     // No awaits from here on: re-check, record and enqueue are atomic on one thread.
