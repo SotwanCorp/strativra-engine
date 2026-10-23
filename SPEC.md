@@ -106,8 +106,43 @@ Five benchmark agents reported (capture, conversion detection, report UX, hostin
 
 **Pending owner calls**: the report-UX benchmark advises against an email wall before the report (show it, ask for the email for the PDF or a copy). The owner chose the email gate; it stays unless the owner changes it.
 
-## 9. Open questions
+## 9. AI layer (decided 2026-10-23)
+
+Goal: an auditor unlike anything on the market. The deterministic engine (capture, decode, rules) stays the base; AI sits on top.
+
+**Who does what**
+- **Jev (TypeSafe AI, "System One" model)** makes typed, calibrated decisions: Noul (yes/no probability), Choice (one of a set + distribution), Score (rubric level). Used for: is this hit a real conversion, which conversion type is this form or path, how severe is this finding, which business model is this site. Every answer carries a confidence.
+- **Claude (Anthropic)** acts: explores sites like an analyst (paid only, step budget, never-submit/never-pay guards still enforced by the runner), writes the report text, generates the fix pack, answers "Ask your audit".
+
+**Escalation ladder** for any judgment: rules engine -> Jev -> (below threshold) Claude reasons over the evidence -> (still uncertain, paid) the owner's review queue. On free reports an unresolved item shows as "Needs a closer look", which points to the paid audit.
+
+**Evidence-locked AI**: every AI sentence or verdict must cite captured evidence ids (hit, dataLayer push, screenshot, cookie). The validator rejects any output that does not; nothing un-cited reaches a client.
+
+**Unique features**
+1. **Inferred tracking plan** (free): AI infers the business model and what the site should track (conversions + expected events), each marked tracked / partial / missing. AI never estimates conversion values (no invented numbers); the paid audit asks the client for real ones.
+2. **Fix pack** (paid): GTM container JSON to import (with a diff), platform snippets where GTM can't fix it (Shopify, Webflow, WordPress, Lovable/React), the tracking plan as a sheet, and a verify-after-fix re-scan with the same evidence standard.
+3. **Ask your audit**: chat answered only from the report's evidence. Free: 3 questions (small model); answers about locked findings point to "Book the Tracking Audit". Paid: unlimited.
+4. **Watch mode** (paid retainer after the audit, priced on the scoping call): weekly re-scan, AI explains what changed or broke, regression alerts.
+
+**Model tiers**: free scans use Jev + a small fast Claude model with a strict token budget per scan. Paid uses the strongest Claude model for exploration, judgment and fixes.
+
+**Data**: only redacted evidence goes to TypeSafe or Anthropic (no ids, emails, phones, cookie values; no client account data on free). Both are listed as subprocessors on the privacy page; paid audits name them in the scoping agreement.
+
+**AI benchmark (2026-10-23), from the SDK packages themselves**
+- Jev: `@typesafe-ai/sdk` 0.7.0, `POST https://api.typesafe.ai/v1/systemone`, key in `TYPESAFE_API_KEY`, model `jev-latest`. Many named questions over one `state` per call (batch per scan stage). `choice` and `score` return a confidence; `noul` returns only a probability (confidence = distance from 0.5). Client: 10s timeout, 2 retries, honours Retry-After.
+- Claude: `@anthropic-ai/sdk` with structured output (`output_config.format` json_schema via `zodOutputFormat`), prompt caching on the static system prompt + rubric. Models: Haiku 5.5 on free, Opus 5.5 on paid.
+- Evidence lock = our own evidence ids inside the schema (not native citations, whose combination with strict JSON is uncertain). Validator: every id exists in this scan; event names, domains and numbers in the text appear in the cited evidence; one repair retry, then fall back to the deterministic template text. Second gate: a Jev `choice` (supports / contradicts / unrelated) over the quoted evidence, TypeSafe's "double-checking citations" pattern; only a high-confidence `supports` passes. Gate on Jev `confidence`, not probability.
+- Severity = atomic Jev scores (data loss, attribution impact, compliance risk, reach) combined with weights in code; Jev moves severity by at most one level from the rules.
+- Escalation: rules -> Jev (accept at confidence >= 0.8) -> Claude reasons -> owner review (paid) / "Needs a closer look" (free).
+- Explorer (paid): a plain Messages-API tool loop over our own guarded browser tools, not the Agent SDK (lighter, easier to sandbox).
+- GTM fix pack: merge-safe container JSON (exportFormatVersion 2), prefixed names, never overwrite, never invent measurement or conversion ids (placeholders + checklist). GTM API deferred to Watch mode.
+- Cost: hard per-scan caps (Jev calls, Claude tokens), cache by evidence digest, a global daily USD circuit breaker that degrades to deterministic output, `usage` logged on every call.
+- Skipped: Jev images and `box` (experimental), the Agent SDK for the explorer, trusting Jev confidence as calibrated before measuring it on a labeled set.
+- To confirm with TypeSafe in writing before launch: data retention and training, rate limits, max state size, direct API access (may be a waitlist; Vercel and Netlify AI gateways are fallbacks), pricing.
+
+## 10. Open questions
 
 1. Container host for the worker (ties to the site hosting choice).
 2. Report URL domain (`strativra.com/r/...` vs a subdomain).
 3. Wire the site: `/scan` form and `/api/scan` call the worker.
+4. Jev API details (endpoint, SDK, limits, pricing, data retention) to verify; the docs domain was unreachable from the cloud sandbox.
