@@ -13,6 +13,7 @@ src/browser/      Playwright runner: scenarios, consent, capture, discovery, saf
 src/report/       report model -> private web report (HTML) + PDF
 src/worker/       hosted runner: HTTP API, SQLite queue, limits, Turnstile, storage
 src/cli/          local runner for paid audits (credentials stay on the owner's machine)
+src/core/instant/ the instant raw-HTML scanner (moved from the old Astro site)
 ```
 
 ## Commands
@@ -32,9 +33,9 @@ Chromium: use `playwright-core` with `executablePath` from `CHROMIUM_PATH` (clou
 3. **No stealth.** No fingerprint spoofing. A bot wall is reported as "blocked by bot protection".
 4. **Privacy:** cookie values are never stored. dataLayer copies are PII-redacted. Never push PII to any dataLayer.
 5. **Honesty:** no invented metrics, benchmarks or client names. Unknown stays unknown (e.g. undocumented gcd letters). Claims from outside are hedged: we only see the browser half of sGTM and CAPI.
-6. **Report copy:** no em-dashes or en-dashes in visible text, no prices, CTA label "Book the Tracking Audit".
+6. **Report copy:** no em-dashes or en-dashes in visible text, no prices, CTA label "Book a Tracking Audit" (from the CTA labels table in `SotwanCorp/strativra` `CLAUDE.md`).
 7. **Erasable TypeScript only** (no enums, no parameter properties), imports with `.ts` extensions.
 
 ## How to work here
 
-Same as the site repo: orchestrate with subagents (cheapest model that can do each task), benchmark before each build step, correctness first. Every module ships with `node:test` tests on fixtures, not live sites.
+Same as the docs repo (`SotwanCorp/strativra`): orchestrate with subagents (cheapest model that can do each task), benchmark before each build step, correctness first. Every module ships with `node:test` tests on fixtures, not live sites.

@@ -89,7 +89,7 @@ const VIEWPORT = { width: 1366, height: 900 };
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, Math.max(0, ms)));
 
-/** Ported from site/src/lib/scan.ts PLATFORMS. */
+/** Ported from the instant scanner's PLATFORMS (src/core/instant/scan.ts). */
 const PLATFORMS: Array<[string, (h: string, hdr: Record<string, string>) => boolean]> = [
   ["Lovable", (h) => /lovable\.app|lovable-tagger|gpteng\.co|lovable\.dev|\blovable\b/i.test(h)],
   ["Vite SPA", (h) => /<script[^>]+type=["']?module["']?[^>]+src=["']?\/assets\/index-[\w-]+\.js/i.test(h) || /\/@vite\/client|src=["']\/src\/main\.[tj]sx?["']/i.test(h)],

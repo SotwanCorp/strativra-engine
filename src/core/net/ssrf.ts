@@ -1,7 +1,7 @@
 /**
  * SSRF guards: URL validation + IP classification + DNS-resolving checks.
  *
- * Ported from the site scanner (`site/src/lib/scan.ts`, sections 2-3) with the
+ * Ported from the instant scanner (`src/core/instant/scan.ts`, sections 2-3) with the
  * same block lists: IPv4 private / reserved ranges, IPv6 allow-list (only
  * global unicast 2000::/3 minus documentation, Teredo, 6to4).
  *

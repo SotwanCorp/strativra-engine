@@ -28,14 +28,8 @@ services:
       timeout: 5s
       retries: 3
 
-  # site:
-  #   # Astro site (SotwanCorp/strativra, site/). Needs SITE_WEBHOOK_URL to point here and
-  #   # the worker needs SITE_ORIGIN set to the site origin.
-  #   image: strativra-site:latest
-  #   restart: unless-stopped
-  #   ports: ["127.0.0.1:4321:4321"]
-  #   environment:
-  #     WORKER_URL: http://worker:8787
+  # The WordPress site (hosted separately) calls this worker server to server:
+  # set SITE_WEBHOOK_URL to its webhook endpoint and SITE_ORIGIN to its origin.
 
 volumes:
   worker-data:

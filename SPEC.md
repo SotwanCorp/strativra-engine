@@ -1,6 +1,6 @@
 # SPEC.md: Tracking Audit Engine spec
 
-Spec agreed with the owner on 2026-10-23. Decisions are also in the `CONTEXT.md` log. This repo (`SotwanCorp/strativra-engine`) is the engine. The marketing site is `SotwanCorp/strativra`; its `site/src/lib/scan.ts` is the raw-HTML layer we grow from, and its `CONTEXT.md` holds the business decisions log.
+Spec agreed with the owner on 2026-10-23. Decisions are also in the `CONTEXT.md` log. This repo (`SotwanCorp/strativra-engine`) is the engine. The marketing site is WordPress (strativra.com); `SotwanCorp/strativra` holds the business docs, copy and the decisions log (`CONTEXT.md`). The instant raw-HTML scanner lives here in `src/core/instant/`.
 
 ## 1. What it is
 
@@ -8,7 +8,7 @@ A tool that shows a business **why its tracking is not working and what its curr
 
 - **Free (self-serve on `/scan`):** outside-in only. A headless browser behaves like a visitor and records every tag, cookie and network hit.
 - **Paid (the Tracking Audit):** outside-in, plus read-only account access, a config audit and a 30-day cross-system reconciliation that puts a size on the leak.
-- **Unlock:** the CTA on locked content is "Book the Tracking Audit" (from `CTA` in `site/src/lib/site.ts`), then a scoping call, a fixed quote and an invoice. No prices on the report or the site.
+- **Unlock:** the CTA on locked content is "Book the Tracking Audit" (the CTA labels table in `SotwanCorp/strativra` `CLAUDE.md`), then a scoping call, a fixed quote and an invoice. No prices on the report or the site.
 
 The engine is **conversion-agnostic**. It audits every way a business converts. No single tool is the focus.
 
@@ -69,12 +69,12 @@ A **private web report** (unguessable URL, Signal Mono, per `DESIGN.md`) plus a 
 ```
 engine repo
   core/        check catalogue, conversion contracts, adapters, journeys, report model
-  worker/      hosted runner (Docker + Playwright) for free scans, called by site /api/scan
+  worker/      hosted runner (Docker + Playwright) for free scans, called by the WordPress site (server to server)
   cli/         local runner for paid audits (credentials never leave the machine)
   report/      web report + PDF renderer
 ```
 
-- The check catalogue grows from the existing `site/src/lib/scan.ts` (raw-HTML checks stay as the first layer).
+- The check catalogue grows from the instant scanner `src/core/instant/scan.ts` (raw-HTML checks stay as the first layer).
 - The worker needs a container host (Fly, Railway or a VPS), not serverless.
 
 ## 7. Gate, storage, privacy
@@ -144,5 +144,5 @@ Goal: an auditor unlike anything on the market. The deterministic engine (captur
 
 1. Container host for the worker (ties to the site hosting choice).
 2. Report URL domain (`strativra.com/r/...` vs a subdomain).
-3. Wire the site: `/scan` form and `/api/scan` call the worker.
+3. Wire the WordPress site: a plugin for the `/scan` page (instant + deep scan), server-side calls to the worker, `/r/` report proxy, webhook into leads.
 4. Jev API details (endpoint, SDK, limits, pricing, data retention) to verify; the docs domain was unreachable from the cloud sandbox.
