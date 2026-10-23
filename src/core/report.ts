@@ -64,6 +64,7 @@ const SEV: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3 
 export function conversionStatuses(capture: Capture, hits: DecodedHit[], findings: Finding[]): ConversionStatus[] {
   const types = CONVERSION_ORDER.filter((t) => capture.conversionPoints.some((p) => p.type === t));
   const anyTracking = hits.some(isTracking);
+  const tagsFailed = findings.some((f) => f.id === "scan.tag_library_failed");
   return types.map((type) => {
     const points = capture.conversionPoints.filter((p) => p.type === type);
     const ids = points.map((p) => p.id);
@@ -71,6 +72,7 @@ export function conversionStatuses(capture: Capture, hits: DecodedHit[], finding
     const mk = (status: ContractStatus, summary: string): ConversionStatus => ({ type, points: ids, status, summary });
 
     if (capture.aborted) return mk("not_testable", `${label}: the scan could not run, so this was not tested.`);
+    if (!anyTracking && tagsFailed) return mk("not_testable", `${label}: your tags did not load during our scan, so this was not tested.`);
     if (!anyTracking) return mk("not_tracked", `${label}: no tracking tag sent any data.`);
 
     const related = findings.filter((f) => f.conversionTypes.includes(type)).sort((a, b) => SEV[a.severity] - SEV[b.severity]);

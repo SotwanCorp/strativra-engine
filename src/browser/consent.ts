@@ -373,7 +373,8 @@ export async function handleBanner(
     }
     // autoconsent found the popup but could not act: try the fallback.
     const fb = await runFallback(page, action, opts.beforeAction);
-    if (fb.outcome === "clicked") return { ...fb, cmp: cmp ?? fb.cmp };
+    // autoconsent did not handle it, so its detected rule name is not trustworthy as the tool name.
+    if (fb.outcome === "clicked") return fb;
     return { outcome: "not_clickable", cmp, method: "autoconsent" };
   }
   const fb = await runFallback(page, action, opts.beforeAction);

@@ -198,6 +198,7 @@ export async function attachRecorder(context: BrowserContext, scenario: Scenario
     detach() {
       active = false;
       context.off("request", onRequest);
+      context.off("requestfailed", onFailed);
     },
   };
   let pageUrl = "";
@@ -239,6 +240,13 @@ export async function attachRecorder(context: BrowserContext, scenario: Scenario
     }
   }
   context.on("request", onRequest);
+
+  // A tag library that never loaded must not read as "the site sends nothing".
+  function onFailed(req: Request) {
+    const r = byReq.get(req);
+    if (r && !r.blocked) r.failed = req.failure()?.errorText ?? "failed";
+  }
+  context.on("requestfailed", onFailed);
 
   async function onRoute(route: Route) {
     const req = route.request();

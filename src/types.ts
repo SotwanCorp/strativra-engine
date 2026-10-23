@@ -30,6 +30,8 @@ export interface CapturedRequest {
   resourceType: string;
   /** True when we aborted it (safety block: form POST, payment endpoint, SSRF). */
   blocked?: BlockReason;
+  /** Network error text when the request failed for any other reason (DNS, refused, blocked egress, ad blocker). */
+  failed?: string;
 }
 
 export type BlockReason = "ssrf" | "form_submit" | "payment" | "unsafe_method" | "limit";
