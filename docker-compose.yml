@@ -1,0 +1,41 @@
+# Run on one EU Hetzner VPS. See deploy/README.md (firewall rules for SSRF egress blocking are required).
+services:
+  worker:
+    build: .
+    image: strativra-engine-worker:latest
+    restart: unless-stopped
+    init: true            # reap Chromium zombies
+    ipc: host             # Chromium needs a large /dev/shm
+    env_file: .env        # never commit .env
+    environment:
+      DATA_DIR: /data
+      PORT: "8787"
+      CONCURRENCY: "2"
+      REGION_LABEL: "EU (Germany)"
+      TRUST_PROXY: "1"    # worker sits behind the reverse proxy / site
+    ports:
+      - "127.0.0.1:8787:8787"   # loopback only; put Caddy/nginx in front for TLS
+    volumes:
+      - worker-data:/data
+    mem_limit: 3g
+    pids_limit: 512
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # site:
+  #   # Astro site (SotwanCorp/strativra, site/). Needs SITE_WEBHOOK_URL to point here and
+  #   # the worker needs SITE_ORIGIN set to the site origin.
+  #   image: strativra-site:latest
+  #   restart: unless-stopped
+  #   ports: ["127.0.0.1:4321:4321"]
+  #   environment:
+  #     WORKER_URL: http://worker:8787
+
+volumes:
+  worker-data:

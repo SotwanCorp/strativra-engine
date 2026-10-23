@@ -155,6 +155,8 @@ export interface DecodedHit {
   consent?: ConsentSignals;
   /** Hit sent to the site's own domain (sGTM or proxy). */
   firstParty: boolean;
+  /** Set when our capture layer aborted the request, so it never reached the vendor. */
+  blocked?: BlockReason;
 }
 
 /* ------------------------------------------------------------------ */

@@ -9,7 +9,8 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test --test-reporter=spec \"src/**/*.test.ts\""
+    "test": "node --experimental-strip-types --test --test-reporter=spec \"src/**/*.test.ts\"",
+    "worker": "node --experimental-strip-types --disable-warning=ExperimentalWarning src/worker/main.ts"
   },
   "devDependencies": {
     "@types/node": "^22.20.5",
