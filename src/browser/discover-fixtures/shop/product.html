@@ -1,0 +1,20 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Linen Shirt</title>
+<meta property="og:type" content="product">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"Product","name":"Linen Shirt","sku":"LS-1"}</script></head>
+<body><header><nav><a href="/">Home</a> <a href="/cart">Cart</a></nav>
+<form role="search" action="/search"><input type="search" name="q" placeholder="Search"><button>Search</button></form></header>
+<main><h1>Linen Shirt</h1>
+<div class="product-form">
+  <label>Quantity <input type="number" name="quantity" value="1" id="qty"></label>
+  <button type="button" id="buy-now">Buy now</button>
+  <button type="button" id="add" data-product-id="42">Add to cart</button>
+</div>
+<p><a href="https://buy.stripe.com/test_fixture">Pay with a payment link</a></p>
+</main>
+<script>
+document.getElementById('add').addEventListener('click', function () {
+  fetch('/cart/add.js', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 42, quantity: Number(document.getElementById('qty').value) }) })
+    .then(function () { document.body.setAttribute('data-added', '1'); });
+});
+document.getElementById('buy-now').addEventListener('click', function () { location.href = '/checkout?buy-now=1'; });
+</script></body></html>

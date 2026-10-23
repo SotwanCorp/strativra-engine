@@ -1,0 +1,9 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Checkout</title></head>
+<body><h1>Checkout</h1>
+<form id="pay" method="post" action="/order">
+  <label>Email <input type="email" name="email" autocomplete="email"></label>
+  <label>Address <input name="address1" autocomplete="shipping address-line1"></label>
+  <label>Postal code <input name="zip" autocomplete="shipping postal-code"></label>
+  <label>Card number <input name="cardnumber" autocomplete="cc-number"></label>
+  <button type="submit">Place order</button>
+</form></body></html>
