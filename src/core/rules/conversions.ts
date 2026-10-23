@@ -1,4 +1,4 @@
-import type { ConversionPoint, ConversionType, DecodedHit, Evidence, FunnelStep, Severity } from "../../types.ts";
+import type { ConversionPoint, ConversionType, DecodedHit, Evidence, Finding, FunnelStep, Severity } from "../../types.ts";
 import { CONTRACTS, FINAL_GA4_EVENTS, FINAL_META_EVENTS, GA4_AUTOMATIC_EVENTS, GA4_ECOMMERCE_EVENTS } from "../contracts.ts";
 import type { Rule, RuleContext } from "./types.ts";
 import { AD_VENDORS, hitEvidence, note, sampleHits, uniq, vendorsOf } from "./helpers.ts";
@@ -119,16 +119,20 @@ const funnelStepUntracked: Rule = {
   run(ctx) {
     const hits = ga4(ctx);
     const misses: Array<{ p: ConversionPoint; s: FunnelStep; expected: string[] }> = [];
+    const pushedNoHit: typeof misses = [];
     for (const p of ctx.capture.conversionPoints) {
       const contract = CONTRACTS[p.type];
       for (const s of p.walk) {
         if (!s.ok) continue;
         const entry = contract.funnel.find((f) => f.step === s.name && f.required);
         if (!entry) continue;
-        if (!hits.some((h) => matchesStep(h, s, entry.ga4))) misses.push({ p, s, expected: entry.ga4 });
+        if (hits.some((h) => matchesStep(h, s, entry.ga4))) continue;
+        // The site pushed an event for this step: the tag may batch or be delayed, so "not tracked" is not proven.
+        if (pushedAfter(ctx, s)) pushedNoHit.push({ p, s, expected: entry.ga4 });
+        else misses.push({ p, s, expected: entry.ga4 });
       }
     }
-    if (misses.length === 0) return [];
+    if (misses.length === 0) return pushedNoHit.length ? [unverifiedPush(pushedNoHit)] : [];
     const types = uniq(misses.map((m) => m.p.type));
     let severity: Severity = "low";
     let impact: 1 | 2 | 3 | 4 | 5 = 2;
@@ -167,6 +171,36 @@ const funnelStepUntracked: Rule = {
     ];
   },
 };
+
+/** A non-GTM dataLayer event pushed within 4s after the step, in the same scenario. */
+function pushedAfter(ctx: RuleContext, s: FunnelStep): boolean {
+  const run = ctx.capture.scenarios.find((r) => r.scenario === s.scenario);
+  return !!run?.dataLayer.some((d) => {
+    const ev = (d.payload as { event?: unknown } | null)?.event;
+    return typeof ev === "string" && !ev.startsWith("gtm.") && d.ts >= s.ts && d.ts - s.ts <= 4_000;
+  });
+}
+
+function unverifiedPush(items: Array<{ p: ConversionPoint; s: FunnelStep; expected: string[] }>): Finding {
+  return {
+    id: "conversion.datalayer_event_no_hit",
+    title: "A conversion event did not reach GA4 during our scan",
+    severity: "low",
+    why: "Your site pushed the event to the dataLayer, but we saw no GA4 hit for it before we left the page. It may be delayed or batched, or the tag may not fire.",
+    conversionTypes: uniq(items.map((m) => m.p.type)),
+    vendors: ["ga4"],
+    impact: 2,
+    confidence: 1,
+    reach: 2,
+    effort: 1,
+    reproduced: false,
+    evidence: items.slice(0, 5).map((m) => stepEvidence(m.p, m.s, m.expected)),
+    fix: {
+      summary: "Check in GTM Preview that the GA4 event tag fires on this dataLayer event.",
+      steps: ["Open GTM Preview, repeat the action and confirm the GA4 tag fires.", "Confirm the event arrives in GA4 DebugView."],
+    },
+  };
+}
 
 const ecommerceParamsMissing: Rule = {
   id: "conversion.ecommerce_params_missing",

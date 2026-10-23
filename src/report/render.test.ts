@@ -63,6 +63,56 @@ test("third-party strings are escaped", () => {
   assert.ok(!/[–—]/.test(html));
 });
 
+const withPlan = (over: Partial<NonNullable<Report["plan"]>> = {}): Report => ({
+  ...structuredClone(sampleReport),
+  plan: {
+    businessModel: { value: "lead_gen", confidence: 0.6, source: "rules" },
+    conversions: [
+      { type: "lead", status: "missing", why: "Form enquiries should be measured.", evidenceIds: ["r"] },
+      { type: "contact_click", status: "unknown", why: "Your tags did not load during our scan, so this was not tested.", evidenceIds: ["r"] },
+      { type: "booking", status: "tracked", why: "Fine.", evidenceIds: ["r"] },
+      { type: "download", status: "partial", why: "Partly.", evidenceIds: ["r"] },
+    ],
+    events: [
+      { name: "generate_lead", vendor: "ga4", conversionType: "lead", status: "missing" },
+      { name: "Lead", vendor: "meta", conversionType: "lead", status: "seen" },
+      { name: "Contact", vendor: "meta", conversionType: "contact_click", status: "unknown" },
+    ],
+    ...over,
+  },
+});
+
+test("plan section: after setup, chips, orange only for missing, no dashes", () => {
+  for (const kind of ["free", "paid"] as const) {
+    const html = renderReportHtml(withPlan(), { kind, bookUrl: BOOK });
+    assert.equal((html.match(/<h1[ >]/g) ?? []).length, 1);
+    const setup = html.indexOf('id="h-setup"'), plan = html.indexOf('id="h-plan"'), conv = html.indexOf('id="h-conv"');
+    assert.ok(setup > 0 && plan > setup && conv > plan, "plan sits right after Your setup");
+    assert.ok(html.includes("What your site should track"));
+    assert.ok(html.includes("Lead generation") && html.includes(">likely<"), "confidence below 0.8 reads as likely");
+    for (const c of ["p-missing", "p-unknown", "p-tracked", "p-partial"]) assert.ok(html.includes(`class="st ${c}"`), c);
+    assert.ok(html.includes("<code>generate_lead</code>") && html.includes("e-missing") && html.includes("e-seen") && html.includes("e-unknown"));
+    assert.ok(!/[–—]/.test(html));
+    assert.ok(!/\.p-(tracked|partial|unknown)\{[^}]*signal/.test(html), "orange is only for missing");
+  }
+  const sure = renderReportHtml(withPlan({ businessModel: { value: "ecommerce", confidence: 0.95, source: "jev" } }), { kind: "free", bookUrl: BOOK });
+  assert.ok(sure.includes("Online shop") && !sure.includes(">likely<"));
+});
+
+test("plan section: escaped, absent without a plan, hidden for blocked scans", () => {
+  const r = withPlan();
+  r.plan!.conversions[0]!.why = "<script>alert(1)</script> — x";
+  r.plan!.events[0]!.name = "<img src=x>";
+  const html = renderReportHtml(r, { kind: "free", bookUrl: BOOK });
+  assert.ok(!html.includes("<script") && !html.includes("<img src=x>"));
+  assert.ok(html.includes("&lt;script&gt;") && !/[–—]/.test(html));
+  assert.ok(!renderReportHtml(sampleReport, { kind: "free", bookUrl: BOOK }).includes("h-plan"));
+  const blocked = withPlan();
+  blocked.findings = [];
+  blocked.scan.aborted = { reason: "bot_protection", detail: "Blocked" } as never;
+  assert.ok(!renderReportHtml(blocked, { kind: "free", bookUrl: BOOK }).includes("h-plan"));
+});
+
 test("tokens and headers", () => {
   const { token, hash } = newReportToken();
   assert.equal(token.length, 32);

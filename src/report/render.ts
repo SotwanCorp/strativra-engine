@@ -1,4 +1,4 @@
-import type { ContractStatus, Evidence, Finding, Report, Severity, StackItem, Vendor } from "../types.ts";
+import type { BusinessModel, ContractStatus, Evidence, Finding, InferredPlan, PlanEventStatus, PlanStatus, Report, Severity, StackItem, Vendor } from "../types.ts";
 
 export interface RenderOpts {
   kind: "free" | "paid";
@@ -239,6 +239,34 @@ function reconHtml(rows: NonNullable<RenderExtras["reconciliation"]>): string {
   return `<section aria-labelledby="h-rec"><h2 id="h-rec">Reconciliation</h2><p class="sub">Counts from your source of truth against what each platform reports. Gap is platform versus truth.</p><ul class="recs">${items.join("")}</ul></section>`;
 }
 
+/* ---------------------------- inferred plan ---------------------------- */
+
+const MODEL_LABEL: Record<BusinessModel, string> = {
+  ecommerce: "Online shop", lead_gen: "Lead generation", saas: "Software with sign-ups", booking: "Bookings and appointments",
+  content: "Content and publishing", local_service: "Local service", other: "Not clear from the pages we saw",
+};
+const PLAN_STATUS: Record<PlanStatus, { text: string; glyph: string }> = {
+  tracked: { text: "Tracked", glyph: "✓" }, partial: { text: "Partial", glyph: "◐" }, missing: { text: "Missing", glyph: "○" }, unknown: { text: "Unknown", glyph: "?" },
+};
+const EVENT_STATUS: Record<PlanEventStatus, string> = { seen: "seen", missing: "missing", unknown: "unknown" };
+
+function planHtml(plan: InferredPlan): string {
+  const bm = plan.businessModel;
+  const label = MODEL_LABEL[bm.value] ?? bm.value;
+  const likely = bm.confidence < 0.8 ? ` <span class="lab">likely</span>` : "";
+  const rows = plan.conversions.map((c) => {
+    const s = PLAN_STATUS[c.status];
+    return `<li class="conv"><span class="t">${esc(TYPE_LABEL[c.type] ?? c.type)}</span><span class="st p-${esc(c.status)}"><span aria-hidden="true">${s.glyph}</span>${s.text}</span><span>${esc(c.why)}</span></li>`;
+  }).join("");
+  const events = plan.events.map((e) =>
+    `<li class="evc e-${esc(e.status)}"><code>${esc(e.name)}</code><span class="lab">${esc(VENDOR_NAME[e.vendor] ?? e.vendor)}, ${EVENT_STATUS[e.status]}</span></li>`,
+  ).join("");
+  return `<section aria-labelledby="h-plan"><h2 id="h-plan">What your site should track</h2>
+<p class="sub">Business model: <strong>${esc(label)}</strong>${likely}</p>
+${rows ? `<ul class="convs">${rows}</ul>` : `<p>We did not find a clear conversion to plan for on the pages we scanned.</p>`}
+${events ? `<h3 class="evh">Expected events</h3><ul class="evcs">${events}</ul>` : ""}</section>`;
+}
+
 /* ---------------------------- page ---------------------------- */
 
 function css(assetBase?: string): string {
@@ -295,6 +323,15 @@ section{padding:40px 0 8px;border-top:2px solid var(--ink);margin-top:40px}
 .st{display:inline-flex;gap:8px;align-items:center;font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;border:2px solid var(--ink);padding:3px 10px;width:fit-content}
 .st.broken{background:var(--signal)}
 .st.not_tracked,.st.not_testable{border-style:dashed}
+.st.p-missing{background:var(--signal)}
+.st.p-unknown{border-style:dashed}
+.evh{margin:24px 0 10px;font-size:15px}
+.evcs{display:flex;flex-wrap:wrap;gap:8px;list-style:none;padding:0;margin:0}
+.evc{display:inline-flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline;border:2px solid var(--ink);padding:3px 10px;max-width:100%;break-inside:avoid}
+.evc code{font-family:var(--mono);font-size:13px;overflow-wrap:anywhere}
+.evc.e-missing{background:var(--signal)}
+.evc.e-missing .lab{color:var(--ink)}
+.evc.e-unknown{border-style:dashed;border-color:var(--meta)}
 .finding{border:2px solid var(--ink);padding:20px;margin:0 0 16px;break-inside:avoid}
 .finding header{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px}
 .finding header h3{flex-basis:100%;margin-top:6px}
@@ -445,6 +482,7 @@ ${blocked ? "" : aborted}
 </header>
 ${blocked ? abortedBody(report, opts) : `
 <section aria-labelledby="h-setup"><h2 id="h-setup">Your setup</h2>${buildMap(report, paid)}</section>
+${report.plan ? planHtml(report.plan) : ""}
 
 <section aria-labelledby="h-conv"><h2 id="h-conv">Conversions</h2>${convs}</section>
 

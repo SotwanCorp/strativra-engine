@@ -26,3 +26,22 @@ test("without a failed library, absence findings stay", () => {
   assert.ok(!ids.includes("scan.tag_library_failed"));
   assert.ok(ids.includes("conversion.form_start_missing"));
 });
+
+test("a step whose dataLayer event was pushed but not seen in GA4 is unverified, not 'not tracked'", async () => {
+  const { leadSite: _l, ...fx } = await import("./fixtures.ts");
+  const point = { id: "cc1", type: "contact_click" as const, pageUrl: "https://example.test/", label: "Email link", detectedBy: "generic", confidence: 0.9, walk: [{ name: "click", action: "clicked email link", ok: true, pageUrl: "https://example.test/", ts: 1000, scenario: "accept" as const }] };
+  const c = fx.capture({
+    target: "https://example.test/",
+    pages: [{ url: "https://example.test/", status: 200, via: "start" }],
+    conversionPoints: [point],
+    scenarios: [
+      fx.run("none", "not_applicable"),
+      fx.run("accept", "clicked", { dataLayer: [{ scenario: "accept", phase: "post", ts: 1200, pageUrl: "https://example.test/", payload: { event: "email_click" } }] }),
+      fx.run("reject", "clicked"),
+    ],
+  });
+  const hits = [fx.hit({ vendor: "ga4", eventName: "page_view", scenario: "accept", phase: "post", ts: 500, pageUrl: "https://example.test/" })];
+  const ids = runRules({ capture: c, hits, siteHost: "example.test" }).findings.map((f) => f.id);
+  assert.ok(!ids.includes("conversion.funnel_step_untracked"));
+  assert.ok(ids.includes("conversion.datalayer_event_no_hit"));
+});

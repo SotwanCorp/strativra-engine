@@ -276,4 +276,39 @@ export interface Report {
   /** One line per top finding: why it is ranked there. */
   rankNotes: Record<string, string>;
   scan: { pages: number; durationMs: number; banner: Partial<Record<Scenario, BannerOutcome>>; aborted?: Capture["aborted"] };
+  /** What this site should track. Set by the AI layer (enrichReport) or its deterministic fallback. */
+  plan?: InferredPlan;
+}
+
+/* ------------------------------------------------------------------ */
+/* Inferred tracking plan (single source of truth; the AI layer re-exports)  */
+/* ------------------------------------------------------------------ */
+
+export type BusinessModel = "ecommerce" | "lead_gen" | "saas" | "booking" | "content" | "local_service" | "other";
+
+export type PlanStatus = "tracked" | "partial" | "missing" | "unknown";
+export type PlanEventStatus = "seen" | "missing" | "unknown";
+
+export interface PlanConversion {
+  type: ConversionType;
+  status: PlanStatus;
+  /** One plain sentence. No numbers, no prices. */
+  why: string;
+  /** Evidence ids from this scan ("r", "cp:<id>", ...). */
+  evidenceIds: string[];
+}
+
+export interface PlanEvent {
+  /** From a fixed vocabulary (GA4 recommended + Meta standard events), never free text. */
+  name: string;
+  vendor: "ga4" | "meta";
+  conversionType: ConversionType;
+  status: PlanEventStatus;
+}
+
+/** No values, no volumes, no numbers. The paid audit asks the client for real values. */
+export interface InferredPlan {
+  businessModel: { value: BusinessModel; confidence: number; source: "jev" | "rules" | "claude" };
+  conversions: PlanConversion[];
+  events: PlanEvent[];
 }

@@ -7,15 +7,16 @@ import { FakeClaude, FakeJev, sampleCapture } from "./fakes.test-util.ts";
 test("no deps: identity report + deterministic plan, no numbers in plan text", async () => {
   const before = structuredClone(sampleReport);
   const res = await enrichReport(sampleReport, sampleCapture());
-  assert.equal(res.report, sampleReport);
+  assert.deepEqual({ ...res.report, plan: undefined }, { ...sampleReport, plan: undefined });
+  assert.equal(res.report.plan, res.plan, "plan is attached to the report");
   assert.deepEqual(sampleReport, before, "input not mutated");
   assert.equal(res.narrative, undefined);
   assert.equal(res.plan.businessModel.value, "ecommerce");
   assert.equal(res.plan.businessModel.source, "rules");
   assert.ok(res.plan.conversions.some((c) => c.type === "purchase" && c.status === "partial"));
-  assert.equal(res.plan.events.find((e) => e.name === "purchase")?.status, "tracked", "purchase seen in the dataLayer");
-  assert.equal(res.plan.events.find((e) => e.name === "begin_checkout")?.status, "missing");
-  for (const c of res.plan.conversions) assert.ok(!/\d/.test(c.why.text));
+  assert.equal(res.plan.events.find((e) => e.name === "purchase")?.status, "seen", "purchase seen in the dataLayer");
+  assert.equal(res.plan.events.find((e) => e.name === "begin_checkout")?.status, "unknown", "step was not walked, so not missing");
+  for (const c of res.plan.conversions) assert.ok(!/\d/.test(c.why));
   assert.equal(res.usage.jevCalls + res.usage.claudeCalls, 0);
 });
 
@@ -75,10 +76,11 @@ test("with fakes: one Jev batch, ladder on ambiguous points, severity within one
 
   // plan: Jev business model, vocabulary only, statuses in code
   assert.equal(res.plan.businessModel.source, "jev");
-  assert.ok(res.plan.events.some((e) => e.name === "add_payment_info" && e.status === "missing"));
+  assert.ok(res.plan.events.some((e) => e.name === "add_payment_info" && e.status === "unknown"));
   assert.ok(!res.plan.events.some((e) => e.name === "made_up_event"));
   for (const e of res.plan.events) assert.ok(e.vendor === "ga4" ? GA4_VOCAB.has(e.name) : META_VOCAB.has(e.name));
-  assert.equal(res.plan.conversions.find((c) => c.type === "purchase")?.why.source, "ai");
+  assert.equal(res.plan.conversions.find((c) => c.type === "purchase")?.why, "This shop sells products, so orders are the main goal.");
+  assert.equal(res.report.plan, res.plan);
   assert.ok(res.usage.claudeCalls >= 3 && res.usage.usd > 0);
 });
 

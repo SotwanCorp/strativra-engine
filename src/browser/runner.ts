@@ -154,6 +154,21 @@ function timeLeft(st: RunState): number {
   return st.deadline - Date.now();
 }
 
+/**
+ * GA4 and other tags batch events and send them on page hide. Before closing a scenario,
+ * read the dataLayer one last time, then navigate every page away so pending beacons go out
+ * while the recorder is still attached. Without this, a click tracked a second ago looks untracked.
+ */
+async function flushPending(context: BrowserContext, page: Page, st: RunState, rec: Recorder, run: ScenarioRun, startedAt: number): Promise<void> {
+  if (timeLeft(st) < 4_000) return;
+  await page.waitForTimeout(1_500).catch(() => {});
+  await drain(page, st, rec, run, startedAt).catch(() => {});
+  for (const p of context.pages()) {
+    await p.goto("about:blank", { timeout: 3_000 }).catch(() => {});
+  }
+  await page.waitForTimeout(1_500).catch(() => {});
+}
+
 async function settle(page: Page, st: RunState, settleMs: number): Promise<void> {
   const cap = (ms: number) => Math.max(0, Math.min(ms, timeLeft(st) - 1000));
   await page.waitForLoadState("load", { timeout: cap(20_000) }).catch(() => {});
@@ -338,6 +353,7 @@ async function runScenario(browser: Browser, scenario: Scenario, startUrl: URL, 
       }
     }
     mergeCookies(run, await snapshotCookies(context, scenario, "post", st.siteHost));
+    await flushPending(context, page, st, rec, run, startedAt);
   } catch (e) {
     run.errors.push(st.timedOut ? "timeout" : `scenario: ${(e as Error).message.split("\n")[0]}`);
   } finally {

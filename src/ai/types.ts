@@ -2,7 +2,7 @@
  * Types local to the AI layer. The shared contract stays in src/types.ts;
  * proposed additions there are listed in the AI layer hand-off notes.
  */
-import type { ConversionType, ReportKind, Severity, Vendor } from "../types.ts";
+import type { ConversionType, InferredPlan, ReportKind, Severity } from "../types.ts";
 
 /** "free" uses Jev + a small Claude model under a strict budget, "paid" the strongest model. */
 export type Tier = ReportKind;
@@ -78,30 +78,9 @@ export interface LockedClaim extends CitedClaim {
 /* Inferred tracking plan                                               */
 /* ------------------------------------------------------------------ */
 
-export type BusinessModel = "ecommerce" | "lead_gen" | "saas" | "booking" | "content" | "local_service" | "other";
-
-export type PlanStatus = "tracked" | "partial" | "missing" | "unknown";
-
-export interface PlanEvent {
-  /** From a fixed vocabulary (GA4 recommended + Meta standard events), never free text. */
-  name: string;
-  vendor: Extract<Vendor, "ga4" | "meta">;
-  conversionType?: ConversionType;
-  status: PlanStatus;
-}
-
-export interface PlanConversion {
-  type: ConversionType;
-  status: PlanStatus;
-  why: LockedClaim;
-}
-
-/** No values, no volumes, no numbers. The paid audit asks the client for real values. */
-export interface TrackingPlan {
-  businessModel: { value: BusinessModel; confidence: number; source: "rules" | "jev" | "claude" };
-  conversions: PlanConversion[];
-  events: PlanEvent[];
-}
+export type { BusinessModel, InferredPlan, PlanConversion, PlanEvent, PlanEventStatus, PlanStatus } from "../types.ts";
+/** Kept as an alias: the plan type lives in src/types.ts. */
+export type TrackingPlan = InferredPlan;
 
 /* ------------------------------------------------------------------ */
 /* Narrative                                                            */

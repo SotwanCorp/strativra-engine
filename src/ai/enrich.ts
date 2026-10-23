@@ -28,7 +28,7 @@ import {
 } from "./judge.ts";
 import { decide } from "./ladder.ts";
 import { type BuiltIndex, buildEvidenceIndex, findingEvidenceIds, pick } from "./redact.ts";
-import type { BusinessModel, EvidenceItem, Judgment, Narrative, PlanEvent, PlanStatus, Tier, TrackingPlan } from "./types.ts";
+import type { BusinessModel, EvidenceItem, Judgment, Narrative, PlanEvent, PlanEventStatus, PlanStatus, Tier, TrackingPlan } from "./types.ts";
 import { AiWriter, BUSINESS_MODELS, CONVERSION_TYPES, type ClaudeClient, type SiteSummary, planWhyTemplate } from "./writer.ts";
 
 export interface EnrichDeps {
@@ -87,9 +87,10 @@ export async function enrichReport(report: Report, capture: Capture | undefined,
   const judge = deps.jev ? new AiJudge(deps.jev, { budget, threshold }) : undefined;
   const writer = deps.claude ? new AiWriter(deps.claude, { budget, judge: deps.supportsGate === false ? undefined : judge }) : undefined;
 
+  const base = basePlan(report, capture, built);
   const out: EnrichResult = {
-    report,
-    plan: basePlan(report, capture, built),
+    report: { ...report, plan: base },
+    plan: base,
     usage: budget.usage,
     judgments: { conversionPoints: {}, severity: {} },
     needsCloserLook: [],
@@ -186,6 +187,7 @@ export async function enrichReport(report: Report, capture: Capture | undefined,
 
   /* ---------- plan ---------- */
   out.plan = await aiPlan(out.plan, next, capture, built, tier, writer, out.judgments.businessModel, threshold);
+  next.plan = out.plan;
   out.report = next;
   return out;
 }
@@ -210,14 +212,24 @@ const EXPECTED: Record<ConversionType, Array<Pick<PlanEvent, "name" | "vendor">>
   download: [{ name: "file_download", vendor: "ga4" }],
 };
 
+/**
+ * Core conversion types per business model, listed even when we did not detect them.
+ * Anything else is listed only when detected on the site. A type that is neither is never listed.
+ */
 const BY_MODEL: Record<BusinessModel, ConversionType[]> = {
-  ecommerce: ["purchase", "contact_click"],
+  ecommerce: ["purchase"],
   lead_gen: ["lead", "contact_click"],
   saas: ["signup", "lead"],
   booking: ["booking", "contact_click"],
-  content: ["signup"],
-  local_service: ["lead", "contact_click", "booking"],
-  other: ["lead", "contact_click"],
+  content: ["lead"],
+  local_service: ["lead", "contact_click"],
+  other: [],
+};
+
+/** Funnel step (as walked by the browser) that exercises an event. Events not listed here are final steps we never perform. */
+const STEP_OF_EVENT: Record<string, string> = {
+  view_item: "view_item", add_to_cart: "add_to_cart", begin_checkout: "begin_checkout", form_start: "form_start",
+  ViewContent: "view_item", AddToCart: "add_to_cart", InitiateCheckout: "begin_checkout", Contact: "click",
 };
 
 export const GA4_VOCAB = new Set([
@@ -262,26 +274,54 @@ export function observedEvents(built: BuiltIndex): Set<string> {
   return seen;
 }
 
-function conversionStatus(report: Report, t: ConversionType): PlanStatus {
+function conversionStatus(report: Report, t: ConversionType, tagsFailed: boolean): PlanStatus {
   const c = report.conversions.find((x) => x.type === t);
   if (!c) return "unknown";
-  return c.status === "ok" ? "tracked" : c.status === "partial" || c.status === "broken" ? "partial" : c.status === "not_tracked" ? "missing" : "unknown";
+  const st: PlanStatus = c.status === "ok" ? "tracked" : c.status === "partial" || c.status === "broken" ? "partial" : c.status === "not_tracked" ? "missing" : "unknown";
+  return st === "missing" && tagsFailed ? "unknown" : st;
 }
 
-function eventStatus(name: string, seen: Set<string>, report: Report): PlanStatus {
-  if (report.scan.aborted) return "unknown";
-  return seen.has(name) ? "tracked" : "missing";
+/** seen: a matching hit. missing: tags loaded AND the step was exercised. unknown: everything else. */
+function eventStatus(e: Pick<PlanEvent, "name" | "conversionType">, seen: Set<string>, ctx: { loaded: boolean; walked: (t: ConversionType) => Set<string> }): PlanEventStatus {
+  if (seen.has(e.name)) return "seen";
+  if (!ctx.loaded) return "unknown";
+  const step = STEP_OF_EVENT[e.name];
+  return step && ctx.walked(e.conversionType).has(step) ? "missing" : "unknown";
+}
+
+function planContext(report: Report, capture: Capture | undefined, built: BuiltIndex) {
+  const tagsFailed = report.findings.some((f) => f.id === "scan.tag_library_failed");
+  const anyHit = [...built.index.values()].some((i) => i.kind === "hit");
+  const loaded = !report.scan.aborted && !tagsFailed && anyHit;
+  const walked = (t: ConversionType) => new Set((capture?.conversionPoints ?? []).filter((c) => c.type === t).flatMap((c) => c.walk).filter((w) => w.ok).map((w) => w.name));
+  return { tagsFailed, loaded, walked };
+}
+
+function whyText(t: ConversionType, status: PlanStatus, detected: boolean, tagsFailed: boolean): string {
+  let w = planWhyTemplate(t);
+  if (tagsFailed) w += " Your tags did not load during our scan, so this was not tested.";
+  else if (!detected) w += " We did not find this path on the pages we scanned.";
+  else if (status === "unknown") w += " We could not test it from outside.";
+  return w;
 }
 
 export function basePlan(report: Report, capture: Capture | undefined, built: BuiltIndex, model?: { value: BusinessModel; confidence: number; source: "rules" | "jev" | "claude" }): TrackingPlan {
   const bm = model ?? { value: heuristicModel(report, capture), confidence: 0.5, source: "rules" as const };
-  const types = new Set<ConversionType>(BY_MODEL[bm.value]);
-  for (const c of report.conversions) if (c.points.length) types.add(c.type);
+  const detected = new Set<ConversionType>();
+  for (const c of report.conversions) if (c.points.length) detected.add(c.type);
+  for (const c of capture?.conversionPoints ?? []) detected.add(c.type);
+  const types = new Set<ConversionType>([...BY_MODEL[bm.value], ...detected]);
+  const ctx = planContext(report, capture, built);
   const seen = observedEvents(built);
   const events: PlanEvent[] = [];
   const conversions = [...types].map((t) => {
-    for (const e of EXPECTED[t]) if (!events.some((x) => x.name === e.name && x.vendor === e.vendor)) events.push({ ...e, conversionType: t, status: eventStatus(e.name, seen, report) });
-    return { type: t, status: conversionStatus(report, t), why: { text: planWhyTemplate(t), evidenceIds: ["r"], source: "template" as const } };
+    for (const e of EXPECTED[t]) {
+      if (events.some((x) => x.name === e.name && x.vendor === e.vendor)) continue;
+      events.push({ ...e, conversionType: t, status: eventStatus({ name: e.name, conversionType: t }, seen, ctx) });
+    }
+    const status = conversionStatus(report, t, ctx.tagsFailed);
+    const cps = (capture?.conversionPoints ?? []).filter((c) => c.type === t).map((c) => `cp:${c.id}`);
+    return { type: t, status, why: whyText(t, status, detected.has(t), ctx.tagsFailed), evidenceIds: ["r", ...cps] };
   });
   return { businessModel: bm, conversions, events };
 }
@@ -318,18 +358,17 @@ async function aiPlan(
     plan = basePlan(report, capture, built, model);
   }
   const seen = observedEvents(built);
-  const types = new Set(plan.conversions.map((c) => c.type));
-  for (const c of draft.conversions) {
-    if (!types.has(c.type)) {
-      types.add(c.type);
-      plan.conversions.push({ type: c.type, status: conversionStatus(report, c.type), why: why[c.type] });
-    }
+  const ctx = planContext(report, capture, built);
+  const listed = new Set(plan.conversions.map((c) => c.type));
+  // The draft may reword the "why" of listed conversions, but never adds a type the site neither has nor needs.
+  for (const c of plan.conversions) {
+    const w = why[c.type];
+    if (w?.source === "ai") c.why = w.text, c.evidenceIds = w.evidenceIds;
   }
-  for (const c of plan.conversions) if (why[c.type]?.source === "ai") c.why = why[c.type];
   for (const e of draft.events) {
     const ok = e.vendor === "ga4" ? GA4_VOCAB.has(e.name) : META_VOCAB.has(e.name);
-    if (!ok || plan.events.some((x) => x.name === e.name && x.vendor === e.vendor)) continue;
-    plan.events.push({ name: e.name, vendor: e.vendor, ...(e.conversionType ? { conversionType: e.conversionType } : {}), status: eventStatus(e.name, seen, report) });
+    if (!ok || !e.conversionType || !listed.has(e.conversionType) || plan.events.some((x) => x.name === e.name && x.vendor === e.vendor)) continue;
+    plan.events.push({ name: e.name, vendor: e.vendor, conversionType: e.conversionType, status: eventStatus({ name: e.name, conversionType: e.conversionType }, seen, ctx) });
   }
   return plan;
 }

@@ -77,6 +77,14 @@ export async function scan(
       // AI is an enhancement: the deterministic report always ships.
     }
   }
+  if (!report.plan) {
+    // Deterministic plan (no AI) so the "What your site should track" section always renders.
+    try {
+      report = (await enrichReport(report, capture, { hits }, kind)).report;
+    } catch {
+      // The report ships without a plan rather than failing.
+    }
+  }
   const shown = kind === "free" ? redactForFree(report) : report;
   const inlineAssets = await inlineScreenshots(shown, o.screenshotDir);
   const html = renderReportHtml(shown, { kind, bookUrl: o.bookUrl ?? process.env.BOOK_URL ?? "https://strativra.com/audit", inlineAssets });

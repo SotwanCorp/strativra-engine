@@ -44,9 +44,11 @@ test("tripped breaker: enrichReport degrades to the deterministic report, no AI 
   const res = await enrichReport(sampleReport, sampleCapture(), { jev, claude, breaker }, "free");
   assert.equal(jev.calls.length, 0);
   assert.equal(claude.calls.length, 0);
-  assert.deepEqual(res.report, sampleReport);
+  const { plan, ...rest } = res.report;
+  assert.deepEqual(rest, sampleReport);
+  assert.ok(plan, "deterministic plan is still attached");
   assert.equal(res.usage.degraded, true);
   // nothing AI-specific leaks into the report or narrative
-  assert.ok(!JSON.stringify(res.report).match(/\bAI\b|budget|model/i));
+  assert.ok(!JSON.stringify(rest).match(/\bAI\b|budget|model/i));
   for (const c of res.narrative!.summary) assert.equal(c.source, "template");
 });
