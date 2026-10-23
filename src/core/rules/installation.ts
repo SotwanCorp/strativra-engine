@@ -89,7 +89,8 @@ const duplicatePageView: Rule = {
     for (const g of groups.values()) {
       g.sort((a, b) => a.ts - b.ts);
       for (let i = 1; i < g.length; i++) {
-        if (g[i].ts - g[i - 1].ts <= 2000) dupes.push([g[i - 1], g[i]]);
+        // Two events inside one request are one batch (or our decode of it), not a double install.
+        if (g[i].requestId !== g[i - 1].requestId && g[i].ts - g[i - 1].ts <= 2000) dupes.push([g[i - 1], g[i]]);
       }
     }
     if (dupes.length === 0) return [];

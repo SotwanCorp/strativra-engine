@@ -50,7 +50,9 @@ export function buildStack(capture: Capture, hits: DecodedHit[]): StackItem[] {
     if (vh.some((h) => h.firstParty)) item.firstParty = true;
     out.push(item);
   }
-  for (const cmp of uniq(capture.scenarios.map((s) => s.cmp).filter((x): x is string => !!x))) {
+  // Autoconsent heuristic rules and our text fallback don't name a real tool.
+  const cmpName = (n: string) => (/^(fallback|heuristic)/i.test(n) ? "Consent banner (tool not identified)" : n);
+  for (const cmp of uniq(capture.scenarios.map((s) => s.cmp).filter((x): x is string => !!x).map(cmpName))) {
     out.push({ vendor: "cmp", name: cmp, ids: [], source: "global" });
   }
   for (const p of uniq(capture.platformHints)) out.push({ vendor: "platform", name: p, ids: [], source: "html" });

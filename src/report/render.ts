@@ -5,6 +5,8 @@ export interface RenderOpts {
   bookUrl: string;
   /** Same-origin base for screenshots and the self-hosted font. */
   assetBase?: string;
+  /** Screenshot ref -> data: URI, embedded so the report and PDF need no asset URLs. Wins over assetBase. */
+  inlineAssets?: Record<string, string>;
 }
 export interface RenderExtras {
   reconciliation?: Array<{ conversion: string; system: string; truth: number; platform: number }>;
@@ -191,10 +193,11 @@ function kvTable(data: unknown): string {
 const EV_LABEL: Record<Evidence["kind"], string> = {
   hit: "Network hit", datalayer: "dataLayer", cookie: "Cookie", screenshot: "Screenshot", html: "HTML", note: "Note",
 };
-function evidenceHtml(ev: Evidence, assetBase?: string): string {
+function evidenceHtml(ev: Evidence, assetBase?: string, inline?: Record<string, string>): string {
   let body = "";
   if (ev.kind === "screenshot") {
-    const u = assetBase && ev.ref ? assetUrl(assetBase, ev.ref) : null;
+    const data = ev.ref && inline?.[ev.ref]?.startsWith("data:image/") ? inline[ev.ref] : null;
+    const u = data ?? (assetBase && ev.ref ? assetUrl(assetBase, ev.ref) : null);
     body = u
       ? `<img src="${esc(u)}" alt="${esc(ev.caption)}" loading="lazy">`
       : `<p class="shotph">Screenshot is attached to the online report.</p>`;
@@ -206,14 +209,14 @@ function evidenceHtml(ev: Evidence, assetBase?: string): string {
 
 const LOCK = `<svg class="lock" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><rect x="3" y="7" width="10" height="7" fill="currentColor"/><path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
 
-function findingHtml(f: Finding, n: number, open: boolean, report: Report, assetBase?: string): string {
+function findingHtml(f: Finding, n: number, open: boolean, report: Report, assetBase?: string, inline?: Record<string, string>): string {
   const sev = `<span class="sev s-${f.severity}">${SEV_LABEL[f.severity]}</span>`;
   const head = `<header><span class="num">${pad(n)}</span>${sev}${open ? "" : `<span class="lockmark">${LOCK} Locked</span>`}<h3>${esc(f.title)}</h3></header>`;
   let body = `<p class="why">${esc(f.why)}</p>`;
   if (open) {
     const note = report.rankNotes[f.id];
     if (note) body += `<p class="rank"><span class="lab">Why it ranks here</span> ${esc(note)}</p>`;
-    if (f.evidence.length) body += `<div class="evs"><h4>Evidence</h4>${f.evidence.map((e) => evidenceHtml(e, assetBase)).join("")}</div>`;
+    if (f.evidence.length) body += `<div class="evs"><h4>Evidence</h4>${f.evidence.map((e) => evidenceHtml(e, assetBase, inline)).join("")}</div>`;
     body += `<div class="fix"><h4>Fix</h4><p>${esc(f.fix.summary)}</p>${f.fix.steps.length ? `<ol>${f.fix.steps.map((s) => `<li>${esc(s)}</li>`).join("")}</ol>` : ""}</div>`;
   } else {
     body += `<p class="lockedline">${LOCK} Evidence and fix are in the Tracking Audit.</p>`;
@@ -267,8 +270,8 @@ section{padding:40px 0 8px;border-top:2px solid var(--ink);margin-top:40px}
 .counts li{padding:14px 16px;border-right:2px solid var(--ink)}
 .counts li:last-child{border-right:0}
 .counts .n{display:block;font-family:var(--display);font-stretch:125%;font-weight:800;font-size:40px;line-height:1}
-.counts li.c-critical{background:var(--signal)}
-.counts li.c-critical .lab{color:var(--ink)}
+.counts li.c-critical.on{background:var(--signal)}
+.counts li.c-critical.on .lab{color:var(--ink)}
 .mapwrap{overflow-x:auto;border:2px solid var(--ink);padding:8px;background:var(--bg)}
 .mapwrap:focus-visible,a:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
 .map{display:block;width:100%;min-width:640px;height:auto}
@@ -366,7 +369,7 @@ export function renderReportHtml(report: Report, opts: RenderOpts, extras: Rende
   const total = report.findings.length;
 
   const counts = `<ul class="counts" aria-label="Findings by severity">${SEV_ORDER.map(
-    (s) => `<li class="c-${s}"><span class="n">${report.counts[s] ?? 0}</span><span class="lab">${SEV_LABEL[s]}</span></li>`,
+    (s) => `<li class="c-${s}${(report.counts[s] ?? 0) > 0 ? " on" : ""}"><span class="n">${report.counts[s] ?? 0}</span><span class="lab">${SEV_LABEL[s]}</span></li>`,
   ).join("")}</ul>`;
 
   const aborted = report.scan.aborted
@@ -380,7 +383,7 @@ export function renderReportHtml(report: Report, opts: RenderOpts, extras: Rende
       }).join("")}</ul>`
     : `<p>No conversion points were found to test.</p>`;
 
-  const findingsHtml = report.findings.map((f, i) => findingHtml(f, i + 1, isOpen(f), report, opts.assetBase)).join("");
+  const findingsHtml = report.findings.map((f, i) => findingHtml(f, i + 1, isOpen(f), report, opts.assetBase, opts.inlineAssets)).join("");
 
   const cta = !paid
     ? `<aside class="cta" aria-labelledby="h-cta"><h2 id="h-cta">${lockedCount ? `${lockedCount} more to open` : "Go deeper"}</h2><p>${
