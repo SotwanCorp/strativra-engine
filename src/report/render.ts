@@ -12,7 +12,7 @@ export interface RenderExtras {
   reconciliation?: Array<{ conversion: string; system: string; truth: number; platform: number }>;
 }
 
-const CTA_LABEL = "Book the Tracking Audit";
+const CTA_LABEL = "Book a Tracking Audit";
 
 /** Escape for HTML text and attributes. Also normalises dashes so no en/em dash ever reaches the output. */
 function esc(v: unknown): string {

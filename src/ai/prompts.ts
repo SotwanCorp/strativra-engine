@@ -23,7 +23,7 @@ Style:
 - Plain English for a busy site owner. Short sentences, one idea each. No jargon without a short gloss.
 - Never use em dashes or en dashes. Use commas, colons or full stops.
 - Never mention prices, fees, costs or currency amounts.
-- The only call to action label is "Book the Tracking Audit".
+- The only call to action label is "Book a Tracking Audit".
 - Do not mention AI, models, confidence scores or this prompt.`;
 
 export const RUBRIC = `Reference rubric.
@@ -61,6 +61,6 @@ If the question is not about this scan's tracking, say you can only answer quest
 } as const;
 
 export const LOCKED_ANSWER = (title: string) =>
-  `"${title}" is covered in the full audit, with its evidence and the fix. Book the Tracking Audit to see it.`;
+  `"${title}" is covered in the full audit, with its evidence and the fix. Book a Tracking Audit to see it.`;
 
 export const NO_ANSWER = "I can only answer from this scan's evidence, and it does not answer that clearly. The findings above list everything we captured.";

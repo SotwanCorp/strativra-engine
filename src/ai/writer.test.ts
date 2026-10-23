@@ -72,7 +72,7 @@ test("ask on a locked finding (free): covered in the full audit, no leak", async
   const writer = new AiWriter(claude);
   const a = await writer.ask("What is wrong with my Google Ads conversions? my email is jane.doe@example.org", sampleReport, "free", freeBuilt());
   assert.match(a.text, /covered in the full audit/);
-  assert.match(a.text, /Book the Tracking Audit/);
+  assert.match(a.text, /Book a Tracking Audit/);
   assert.ok(!a.text.includes("abc123") && !/enhanced conversions with hashed/i.test(a.text));
   // only the first request is ours; a repair turn echoes the model's own previous answer
   const sent = JSON.stringify(claude.calls[0]);

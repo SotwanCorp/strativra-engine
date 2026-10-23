@@ -31,7 +31,7 @@ test("free: locked findings show no evidence or fix", () => {
     assert.ok(!m[0].includes(f.fix.summary));
     assert.ok(!m[0].includes("class=\"fix\""));
   }
-  assert.ok(html.includes("Book the Tracking Audit"));
+  assert.ok(html.includes("Book a Tracking Audit"));
   assert.ok(html.includes(`href="${BOOK}"`));
 });
 
@@ -160,7 +160,7 @@ test("a scan stopped by bot protection gets its own page, never '0 findings'", (
   const html = renderReportHtml(blocked, { kind: "free", bookUrl: "https://strativra.com/audit" });
   assert.match(html, /Your bot protection stopped our scanner/);
   assert.match(html, /StrativraScanner/);
-  assert.match(html, />Book the Tracking Audit</);
+  assert.match(html, />Book a Tracking Audit</);
   assert.doesNotMatch(html, /No findings/);
   assert.doesNotMatch(html, /0 findings/);
   assert.doesNotMatch(html, /Your setup/);

@@ -12,6 +12,8 @@ export interface WorkerConfig {
   jobTimeoutMs: number;
   retentionDays: number;
   trustProxy: boolean;
+  /** When set, /scans routes require `Authorization: Bearer <key>` (server-to-server from the site). */
+  apiKey?: string;
 }
 
 export function loadConfig(env: Record<string, string | undefined> = process.env): WorkerConfig {
@@ -32,5 +34,6 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     jobTimeoutMs: Number(env.JOB_TIMEOUT_MS ?? 240_000),
     retentionDays: Number(env.RETENTION_DAYS ?? 90),
     trustProxy: env.TRUST_PROXY === "1",
+    apiKey: env.ENGINE_API_KEY || undefined,
   };
 }

@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { createHash } from "node:crypto";
@@ -9,7 +10,7 @@ import type { JobQueue } from "./queue.ts";
 import type { Storage } from "./storage.ts";
 
 export interface ServerDeps {
-  config: Pick<WorkerConfig, "secret" | "siteOrigin" | "trustProxy">;
+  config: Pick<WorkerConfig, "secret" | "siteOrigin" | "trustProxy" | "apiKey">;
   queue: JobQueue;
   limits: Limits;
   storage: Storage;
@@ -163,6 +164,13 @@ export function createWorkerServer(d: ServerDeps): Server {
     return send(res, 200, buf, { ...REPORT_HEADERS, "content-type": type, "content-security-policy": "default-src 'none'" });
   }
 
+  const apiKey = d.config.apiKey ? Buffer.from(`Bearer ${d.config.apiKey}`) : undefined;
+  function authorized(req: IncomingMessage): boolean {
+    if (!apiKey) return true;
+    const got = Buffer.from(String(req.headers.authorization ?? ""));
+    return got.length === apiKey.length && timingSafeEqual(got, apiKey);
+  }
+
   return createServer(async (req, res) => {
     try {
       const path = new URL(req.url ?? "/", "http://x").pathname;
@@ -170,6 +178,7 @@ export function createWorkerServer(d: ServerDeps): Server {
       if (req.method === "OPTIONS") return send(res, 204, "", h);
 
       if (req.method === "GET" && path === "/healthz") return json(res, 200, { ok: true, queue: d.queue.depth() });
+      if (path.startsWith("/scans") && !authorized(req)) return json(res, 401, { error: "unauthorized" }, h);
       if (req.method === "POST" && path === "/scans") return await postScan(req, res, h);
 
       let m = path.match(/^\/scans\/([A-Za-z0-9_-]{1,40})$/);
