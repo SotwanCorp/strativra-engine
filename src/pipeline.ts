@@ -13,6 +13,8 @@ import { renderPdf } from "./report/pdf.ts";
 import { renderReportHtml } from "./report/render.ts";
 import type { Capture, Report, ReportKind } from "./types.ts";
 import type { Pipeline } from "./worker/pipeline.ts";
+import { enrichReport } from "./ai/enrich.ts";
+import { DailyBreaker } from "./ai/budget.ts";
 
 /** Optional AI step. Receives the deterministic report and must return a report (or the same one). */
 export type Enricher = (report: Report, capture: Capture, kind: ReportKind) => Promise<Report>;
@@ -92,10 +94,28 @@ export function createPipeline(opts: PipelineOptions = {}): Pipeline {
   };
 }
 
+/**
+ * AI enrichment when keys are configured (TYPESAFE_API_KEY for Jev, ANTHROPIC_API_KEY for Claude).
+ * Either one alone works; with neither, reports stay deterministic.
+ */
+export async function aiEnricherFromEnv(): Promise<Enricher | undefined> {
+  const hasJev = !!process.env.TYPESAFE_API_KEY;
+  const hasClaude = !!process.env.ANTHROPIC_API_KEY;
+  if (!hasJev && !hasClaude) return undefined;
+  const jev = hasJev ? new (await import("@typesafe-ai/sdk")).TypeSafeClient() : undefined;
+  const claude = hasClaude ? new (await import("@anthropic-ai/sdk")).default() : undefined;
+  const breaker = new DailyBreaker({ maxUsdPerDay: Number(process.env.AI_DAILY_MAX_USD ?? 5) });
+  return async (report, capture, kind) => {
+    const hits = decodeAll(capture.scenarios.flatMap((s) => s.requests), hostOf(capture.finalUrl || capture.target));
+    const res = await enrichReport(report, capture, { jev, claude, breaker, hits }, kind);
+    return res.report;
+  };
+}
+
 /** Sandbox-only egress settings (cloud dev sessions): never set in production. */
 function sandboxRun(): Partial<RunOptions> {
   const upstream = process.env.SCAN_UPSTREAM_PROXY;
   return upstream ? { upstreamProxy: upstream, dnsFailure: "allow" } : {};
 }
 
-export const pipeline: Pipeline = createPipeline({ run: sandboxRun() });
+export const pipeline: Pipeline = createPipeline({ run: sandboxRun(), enrich: await aiEnricherFromEnv() });

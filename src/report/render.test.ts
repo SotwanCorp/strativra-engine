@@ -5,6 +5,7 @@ import { renderReportHtml } from "./render.ts";
 import { renderPdf } from "./pdf.ts";
 import { hashToken, newReportToken, REPORT_HEADERS } from "./token.ts";
 import { sampleReconciliation, sampleReport } from "./fixtures/sample-report.ts";
+import type { Report } from "../types.ts";
 
 const BOOK = "https://strativra.test/audit";
 const free = () => renderReportHtml(sampleReport, { kind: "free", bookUrl: BOOK, assetBase: "/r/abc" });
@@ -94,4 +95,24 @@ test("previews, pdf and screenshots", async () => {
   } finally {
     await browser.close();
   }
+});
+
+test("a scan stopped by bot protection gets its own page, never '0 findings'", () => {
+  const blocked: Report = {
+    ...sampleReport,
+    findings: [],
+    open: [],
+    counts: { critical: 0, high: 0, medium: 0, low: 0 },
+    conversions: [],
+    stack: [],
+    scan: { ...sampleReport.scan, pages: 1, aborted: { reason: "bot_protection", detail: 'HTTP 403, "Just a moment..."' } },
+  };
+  const html = renderReportHtml(blocked, { kind: "free", bookUrl: "https://strativra.com/audit" });
+  assert.match(html, /Your bot protection stopped our scanner/);
+  assert.match(html, /StrativraScanner/);
+  assert.match(html, />Book the Tracking Audit</);
+  assert.doesNotMatch(html, /No findings/);
+  assert.doesNotMatch(html, /0 findings/);
+  assert.doesNotMatch(html, /Your setup/);
+  assert.equal((html.match(/<h1/g) ?? []).length, 1);
 });

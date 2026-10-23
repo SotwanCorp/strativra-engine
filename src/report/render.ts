@@ -360,6 +360,37 @@ section{padding:40px 0 8px;border-top:2px solid var(--ink);margin-top:40px}
 }`;
 }
 
+const ABORT_COPY: Record<NonNullable<Report["scan"]["aborted"]>["reason"], { title: string; body: string; next: string }> = {
+  bot_protection: {
+    title: "Your bot protection stopped our scanner",
+    body: "That protects your site, and it also means we could not test your tracking from the outside. This is not a verdict on your setup.",
+    next: "To scan again, allow our scanner in your firewall (it identifies itself as StrativraScanner). Or book the Tracking Audit, where we test with access you give us.",
+  },
+  timeout: {
+    title: "Your site took too long to load",
+    body: "We stop each scan after a fixed time so it stays fair for everyone. This is not a verdict on your setup.",
+    next: "Try the scan again later, or book the Tracking Audit for a full manual test.",
+  },
+  unreachable: {
+    title: "We could not reach this address",
+    body: "The page did not load from our scanner. Check the address and that the site is public.",
+    next: "Try again with the exact address of your homepage, or book the Tracking Audit.",
+  },
+  not_html: {
+    title: "This address is not a web page",
+    body: "We scan web pages. This address returned something else, such as a file or an API response.",
+    next: "Try again with the address of your homepage.",
+  },
+};
+
+/** A scan that never got going gets its own page: no empty map, no "0 findings" that reads as clean. */
+function abortedBody(report: Report, opts: RenderOpts): string {
+  const a = report.scan.aborted!;
+  const c = ABORT_COPY[a.reason] ?? ABORT_COPY.unreachable;
+  return `<section aria-labelledby="h-abort"><h2 id="h-abort">${esc(c.title)}</h2><p>${esc(c.body)}</p><p>${esc(c.next)}</p><p class="foot">Technical detail: ${esc(a.detail)}</p>
+<aside class="cta" aria-labelledby="h-cta"><h2 id="h-cta">Test it properly</h2><p>The Tracking Audit tests every conversion path with evidence and a fix for each.</p><a class="btn" href="${esc(opts.bookUrl)}">${CTA_LABEL}</a></aside></section>`;
+}
+
 export function renderReportHtml(report: Report, opts: RenderOpts, extras: RenderExtras = {}): string {
   const paid = opts.kind === "paid";
   const openIds = new Set(report.open);
@@ -392,6 +423,7 @@ export function renderReportHtml(report: Report, opts: RenderOpts, extras: Rende
     : "";
 
   const recon = paid && extras.reconciliation?.length ? reconHtml(extras.reconciliation) : "";
+  const blocked = !!report.scan.aborted && report.findings.length === 0;
 
   return `<!doctype html>
 <html lang="en">
@@ -409,9 +441,9 @@ export function renderReportHtml(report: Report, opts: RenderOpts, extras: Rende
 <header>
 <h1>${esc(report.target)}</h1>
 <ul class="meta"><li><b>Date</b>${date}</li><li><b>Scanned from</b>${esc(report.region)}</li><li><b>Report</b>${paid ? "Paid audit" : "Free scan"}</li><li><b>Pages</b>${esc(report.scan.pages)}</li></ul>
-${aborted}
+${blocked ? "" : aborted}
 </header>
-
+${blocked ? abortedBody(report, opts) : `
 <section aria-labelledby="h-setup"><h2 id="h-setup">Your setup</h2>${buildMap(report, paid)}</section>
 
 <section aria-labelledby="h-conv"><h2 id="h-conv">Conversions</h2>${convs}</section>
@@ -420,7 +452,7 @@ ${aborted}
 <div class="list" style="margin-top:24px">${findingsHtml || "<p>No findings.</p>"}</div>
 ${cta}
 </section>
-${recon}
+${recon}`}
 <p class="foot">We only see the browser side of server tagging and server events. Anything marked unknown stays unknown.</p>
 </div>
 </body>
