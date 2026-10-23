@@ -187,6 +187,8 @@ export async function enrichReport(report: Report, capture: Capture | undefined,
 
   /* ---------- plan ---------- */
   out.plan = await aiPlan(out.plan, next, capture, built, tier, writer, out.judgments.businessModel, threshold);
+  const expectedVendors = vendorsExpected(report);
+  out.plan = { ...out.plan, events: out.plan.events.filter((e) => expectedVendors.has(e.vendor)) };
   next.plan = out.plan;
   out.report = next;
   return out;
@@ -305,6 +307,11 @@ function whyText(t: ConversionType, status: PlanStatus, detected: boolean, tagsF
   return w;
 }
 
+/** GA4 is the baseline every site should have; other vendors only when the site uses them. */
+function vendorsExpected(report: Report): Set<string> {
+  return new Set<string>(["ga4", ...report.stack.map((x) => x.vendor)]);
+}
+
 export function basePlan(report: Report, capture: Capture | undefined, built: BuiltIndex, model?: { value: BusinessModel; confidence: number; source: "rules" | "jev" | "claude" }): TrackingPlan {
   const bm = model ?? { value: heuristicModel(report, capture), confidence: 0.5, source: "rules" as const };
   const detected = new Set<ConversionType>();
@@ -314,8 +321,11 @@ export function basePlan(report: Report, capture: Capture | undefined, built: Bu
   const ctx = planContext(report, capture, built);
   const seen = observedEvents(built);
   const events: PlanEvent[] = [];
+  const vendorsInUse = vendorsExpected(report);
   const conversions = [...types].map((t) => {
     for (const e of EXPECTED[t]) {
+      // Only expect events from vendors the site actually uses: no "Meta missing" on a site without Meta.
+      if (!vendorsInUse.has(e.vendor)) continue;
       if (events.some((x) => x.name === e.name && x.vendor === e.vendor)) continue;
       events.push({ ...e, conversionType: t, status: eventStatus({ name: e.name, conversionType: t }, seen, ctx) });
     }

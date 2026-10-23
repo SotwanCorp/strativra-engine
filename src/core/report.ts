@@ -59,6 +59,9 @@ export function buildStack(capture: Capture, hits: DecodedHit[]): StackItem[] {
   return out;
 }
 
+/** Lower-case only the first letter, so names like GA4 keep their case. */
+const lcFirst = (t: string) => t.charAt(0).toLowerCase() + t.slice(1);
+
 const SEV: Record<Severity, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
 export function conversionStatuses(capture: Capture, hits: DecodedHit[], findings: Finding[]): ConversionStatus[] {
@@ -79,10 +82,10 @@ export function conversionStatuses(capture: Capture, hits: DecodedHit[], finding
     const proven = related.filter((f) => f.reproduced);
     const worst = proven[0];
     if (worst && (worst.severity === "critical" || worst.severity === "high")) {
-      return mk("broken", `${label}: ${worst.title.toLowerCase()}.`);
+      return mk("broken", `${label}: ${lcFirst(worst.title)}.`);
     }
-    if (worst) return mk("partial", `${label}: ${worst.title.toLowerCase()}.`);
-    if (related.length > 0) return mk("partial", `${label}: ${related[0].title.toLowerCase()} (not confirmed from outside).`);
+    if (worst) return mk("partial", `${label}: ${lcFirst(worst.title)}.`);
+    if (related.length > 0) return mk("partial", `${label}: ${lcFirst(related[0].title)} (not confirmed from outside).`);
 
     const walked = points.some((p) => p.walk.some((s) => s.ok));
     if (WALKABLE.includes(type) && !walked) return mk("not_testable", `${label}: we could not walk this path safely.`);

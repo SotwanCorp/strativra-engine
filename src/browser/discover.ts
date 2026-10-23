@@ -314,12 +314,12 @@ export function buildPoints(
     if (!conv) {
       // A form builder form the classifier could not place (and not login/search/checkout): weak lead.
       if (ad && f.kind === "unknown") {
-        mk("lead", `form:${f.selector}`, { label: `${ad.meta.vendor ?? "Form"} (${f.fields} fields)`, selector: f.selector, detectedBy: ad.adapterId, confidence: 0.5 }, { ...ad.meta, formKind: f.kind });
+        mk("lead", `form:${f.selector}`, { label: `${ad.meta.vendor ?? "Form"} (${fieldsShown(f)} fields)`, selector: f.selector, detectedBy: ad.adapterId, confidence: 0.5 }, { ...ad.meta, formKind: f.kind });
       }
       continue;
     }
     const base = FORM_LABEL[f.kind] ?? "Form";
-    const label = ad ? `${base} (${ad.meta.vendor}, ${f.fields} fields)` : `${base} (${f.fields} fields)${f.frameUrl ? " in an iframe" : ""}`;
+    const label = ad ? `${base} (${ad.meta.vendor}, ${fieldsShown(f)} fields)` : `${base} (${fieldsShown(f)} fields)${f.frameUrl ? " in an iframe" : ""}`;
     const meta: PointMeta = { walkable: true, embed: "dom", formKind: f.kind, ...(ad ? { vendor: ad.meta.vendor } : {}), ...(f.frameUrl ? { frameUrl: f.frameUrl } : {}) };
     const key = `form:${f.frameUrl ?? ""}:${f.selector}`;
     mk(conv.type, key, { label, selector: f.selector, detectedBy: ad ? ad.adapterId : "generic", confidence: ad ? Math.max(conv.confidence, Math.min(0.97, conv.confidence + 0.05)) : conv.confidence }, meta);
@@ -363,6 +363,11 @@ export async function discoverPage(page: Page, opts: { siteHost: string }): Prom
   const built = buildPoints(snapshot, forms, hits, opts.siteHost);
   for (const b of built) META.set(b.point.id, b.meta);
   return { points: built.map((b) => b.point), platformHints: detectPlatformHints(snapshot), forms, snapshot };
+}
+
+/** Fields a visitor fills in; checkbox and radio groups would inflate the label. */
+function fieldsShown(f: { fields: number; checkboxes: number }): number {
+  return Math.max(1, f.fields - f.checkboxes);
 }
 
 export async function discoverConversionPoints(page: Page, opts: { siteHost: string }): Promise<ConversionPoint[]> {
