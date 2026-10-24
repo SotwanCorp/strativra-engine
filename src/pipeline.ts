@@ -7,7 +7,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { runCapture, type RunOptions } from "./browser/runner.ts";
 import { decodeAll } from "./core/decode/index.ts";
-import { assertPublicUrl } from "./core/net/ssrf.ts";
+import { assertPublicUrl, normalizeUrl } from "./core/net/ssrf.ts";
 import { buildReport, redactForFree } from "./core/report.ts";
 import { renderPdf } from "./report/pdf.ts";
 import { renderReportHtml } from "./report/render.ts";
@@ -94,7 +94,9 @@ export async function scan(
 
 export function createPipeline(opts: PipelineOptions = {}): Pipeline {
   return {
-    validateUrl: (input: string) => assertPublicUrl(input),
+    // Sandbox only (SCAN_UPSTREAM_PROXY set, no local DNS): hostname checks only, as in src/cli/scan.ts.
+    // The runner's network guard still checks every request and redirect. Production resolves DNS here.
+    validateUrl: async (input: string) => (opts.run?.upstreamProxy ? normalizeUrl(input) : assertPublicUrl(input)),
     run: async (url, o) => {
       const { report, html, pdf } = await scan(url, { ...opts, ...o });
       return { report, html, pdf };
