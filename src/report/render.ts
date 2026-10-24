@@ -1,4 +1,4 @@
-import type { BusinessModel, ContractStatus, Evidence, Finding, InferredPlan, PlanEventStatus, PlanStatus, Report, Severity, StackItem, Vendor } from "../types.ts";
+import type { BusinessModel, ContractStatus, Evidence, Finding, InferredPlan, PlanEventStatus, PlanStatus, Report, Scenario, Severity, StackItem, Vendor } from "../types.ts";
 
 export interface RenderOpts {
   kind: "free" | "paid";
@@ -440,9 +440,13 @@ export function renderReportHtml(report: Report, opts: RenderOpts, extras: Rende
     (s) => `<li class="c-${s}${(report.counts[s] ?? 0) > 0 ? " on" : ""}"><span class="n">${report.counts[s] ?? 0}</span><span class="lab">${SEV_LABEL[s]}</span></li>`,
   ).join("")}</ul>`;
 
+  const PASS_LABEL: Record<Scenario, string> = { none: "before any cookie choice", accept: "after accepting cookies", reject: "after rejecting cookies" };
+  const incomplete = report.scan.incomplete;
   const aborted = report.scan.aborted
     ? `<p class="why"><strong>The scan stopped early.</strong> ${esc(report.scan.aborted.detail)}</p>`
-    : "";
+    : incomplete
+      ? `<p class="why"><strong>The scan hit its time limit.</strong> Your site loaded fine. These results cover your site ${esc(incomplete.done.map((s) => PASS_LABEL[s]).join(" and "))}; the other checks did not run.</p>`
+      : "";
 
   const convs = report.conversions.length
     ? `<ul class="convs">${report.conversions.map((c) => {

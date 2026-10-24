@@ -88,6 +88,7 @@ export function conversionStatuses(capture: Capture, hits: DecodedHit[], finding
     if (related.length > 0) return mk("partial", `${label}: ${lcFirst(related[0].title)} (not confirmed from outside).`);
 
     const walked = points.some((p) => p.walk.some((s) => s.ok));
+    if (WALKABLE.includes(type) && !walked && capture.incomplete) return mk("not_testable", `${label}: the scan ran out of time before it could walk this path.`);
     if (WALKABLE.includes(type) && !walked) return mk("not_testable", `${label}: we could not walk this path safely.`);
     if (!WALKABLE.includes(type)) return mk("ok", `${label}: the steps we can see look right. The final submit is checked in the paid audit.`);
     return mk("ok", `${label}: every step we walked was tracked.`);
@@ -109,6 +110,7 @@ export function buildReport(capture: Capture, hits: DecodedHit[], kind: ReportKi
   for (const s of capture.scenarios) banner[s.scenario] = s.banner;
   const scan: Report["scan"] = { pages: capture.pages.length, durationMs: capture.durationMs, banner };
   if (capture.aborted) scan.aborted = capture.aborted;
+  if (capture.incomplete) scan.incomplete = capture.incomplete;
   return {
     id,
     kind,

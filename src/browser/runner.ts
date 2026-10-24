@@ -457,6 +457,8 @@ export async function runCapture(target: string, opts: RunOptions): Promise<Capt
     for (const sc of SCENARIOS) {
       if (st.timedOut || timeLeft(st) <= 0) break;
       const run = await runScenario(browser, sc, startUrl, st);
+      // Cut short by the run budget: its data is partial, so it is dropped (see keepFinishedScenarios).
+      if (st.timedOut && !capture.aborted) break;
       capture.scenarios.push(run);
       if (capture.aborted) break;
     }
@@ -464,10 +466,26 @@ export async function runCapture(target: string, opts: RunOptions): Promise<Capt
     if (!st.timedOut) capture.aborted ??= { reason: "unreachable", detail: `browser: ${(e as Error).message.split("\n")[0]}` };
   } finally {
     clearTimeout(timer);
-    if (st.timedOut) capture.aborted ??= { reason: "timeout", detail: `run exceeded ${timeoutMs} ms` };
+    if (st.timedOut) keepFinishedScenarios(capture, timeoutMs);
     await (browser as Browser | null)?.close().catch(() => {});
     await proxy.close().catch(() => {});
   }
   return finish();
+}
+
+/**
+ * The run budget ran out. If the site loaded and at least one scenario finished, report on the
+ * finished scenarios (a slow multi-step walk is not a slow site); otherwise it is a real timeout.
+ * Walk steps of scenarios that did not finish are removed so no rule reads them.
+ */
+export function keepFinishedScenarios(capture: Capture, timeoutMs: number): void {
+  if (capture.aborted) return;
+  const done = capture.scenarios.map((s) => s.scenario);
+  if (done.length === 0 || capture.pages.length === 0) {
+    capture.aborted = { reason: "timeout", detail: `run exceeded ${timeoutMs} ms` };
+    return;
+  }
+  for (const p of capture.conversionPoints) p.walk = p.walk.filter((s) => done.includes(s.scenario));
+  capture.incomplete = { reason: "time_budget", detail: `run exceeded ${timeoutMs} ms`, done };
 }
 

@@ -108,6 +108,12 @@ export interface Capture {
   platformHints: string[];
   /** Set when the whole run could not proceed. */
   aborted?: { reason: "bot_protection" | "timeout" | "unreachable" | "not_html"; detail: string };
+  /**
+   * Set when the run budget ran out after at least one consent scenario finished. `scenarios` then
+   * holds only the finished ones (the one cut short is dropped, with its walk steps), so rules never
+   * judge a half-run scenario. `done` lists the finished scenarios.
+   */
+  incomplete?: { reason: "time_budget"; detail: string; done: Scenario[] };
 }
 
 /* ------------------------------------------------------------------ */
@@ -275,7 +281,7 @@ export interface Report {
   counts: Record<Severity, number>;
   /** One line per top finding: why it is ranked there. */
   rankNotes: Record<string, string>;
-  scan: { pages: number; durationMs: number; banner: Partial<Record<Scenario, BannerOutcome>>; aborted?: Capture["aborted"] };
+  scan: { pages: number; durationMs: number; banner: Partial<Record<Scenario, BannerOutcome>>; aborted?: Capture["aborted"]; incomplete?: Capture["incomplete"] };
   /** What this site should track. Set by the AI layer (enrichReport) or its deterministic fallback. */
   plan?: InferredPlan;
 }

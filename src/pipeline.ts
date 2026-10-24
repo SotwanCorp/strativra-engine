@@ -128,4 +128,14 @@ function sandboxRun(): Partial<RunOptions> {
   return upstream ? { upstreamProxy: upstream, dnsFailure: "allow" } : {};
 }
 
-export const pipeline: Pipeline = createPipeline({ run: sandboxRun(), enrich: await aiEnricherFromEnv() });
+/**
+ * Browser budget for one scan (all three consent scenarios, walks and sub-pages). 120 s was too
+ * short for sites with a consent banner and several conversion paths. Keep it about 60 s under the
+ * worker's JOB_TIMEOUT_MS (default 240 s), which also covers the report, AI and PDF.
+ */
+export function scanTimeoutMs(env: Record<string, string | undefined> = process.env): number {
+  const v = Number(env.SCAN_TIMEOUT_MS ?? 180_000);
+  return Number.isFinite(v) && v >= 30_000 ? v : 180_000;
+}
+
+export const pipeline: Pipeline = createPipeline({ run: { ...sandboxRun(), timeoutMs: scanTimeoutMs() }, enrich: await aiEnricherFromEnv() });
