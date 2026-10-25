@@ -1,11 +1,13 @@
 import { mkdtemp, readdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { gunzipSync } from "node:zlib";
+import type { CaptureUpload } from "../core/upload.ts";
 import { newToken, openEmail, sha256Hex } from "./crypto.ts";
 import type { Pipeline } from "./pipeline.ts";
 import type { Job, JobQueue } from "./queue.ts";
 import type { Storage } from "./storage.ts";
-import { sendWebhook } from "./webhook.ts";
+import { sendWebhook, summarizeReport } from "./webhook.ts";
 import type { WebhookPayload } from "./webhook.ts";
 
 export interface RunnerDeps {
@@ -64,27 +66,59 @@ export class Runner {
   private async process(job: Job): Promise<void> {
     const d = this.d;
     const email = openEmail(d.secret, job.email_enc);
-    const dir = await mkdtemp(join(tmpdir(), "scan-"));
+    const capture = job.kind === "capture";
+    // Hosted scans write screenshots here. Uploaded recordings have none and never touch the site.
+    const dir = capture ? undefined : await mkdtemp(join(tmpdir(), "scan-"));
+    const meta = {
+      source: job.source,
+      trigger: job.trigger_kind,
+      ...(job.account_ref ? { accountRef: job.account_ref } : {}),
+      ...(job.site_ref ? { siteRef: job.site_ref } : {}),
+      ai: job.ai !== 0,
+    };
     let payload: WebhookPayload;
     try {
-      const url = await d.pipeline.validateUrl(job.url);
+      type Built = { report: unknown; html: string; pdf?: Buffer };
+      let start: () => Promise<Built>;
+      if (capture) {
+        if (!job.input_gz) throw new Error("capture_input_missing");
+        const upload = JSON.parse(gunzipSync(job.input_gz).toString("utf8")) as CaptureUpload;
+        start = () => d.pipeline.fromCapture(upload, { reportId: job.report_id, ai: job.ai !== 0 });
+      } else {
+        const url = await d.pipeline.validateUrl(job.url);
+        start = () => d.pipeline.run(url, { region: d.region, reportId: job.report_id, screenshotDir: dir!, ai: job.ai !== 0 });
+      }
       let timer: ReturnType<typeof setTimeout> | undefined;
       const timeout = new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error("scan_timeout")), d.jobTimeoutMs); });
-      const res = await Promise.race([d.pipeline.run(url, { region: d.region, reportId: job.report_id, screenshotDir: dir }), timeout]).finally(() => clearTimeout(timer));
+      const res = await Promise.race([Promise.resolve().then(start), timeout]).finally(() => clearTimeout(timer));
+      // Erased (DELETE /reports/{id}) while it ran: discard the result, store nothing, tell no one.
+      if (!d.queue.get(job.id)) return;
       await d.storage.putReport(job.report_id, res.html, JSON.stringify(res.report), res.pdf);
-      for (const rel of await listFiles(dir)) {
-        const ext = rel.split(".").pop()?.toLowerCase() ?? "";
-        await d.storage.putAsset(`${job.report_id}/${rel}`, await readFile(join(dir, rel)), MIME[ext]);
+      const assets: string[] = [];
+      if (dir) {
+        for (const rel of await listFiles(dir)) {
+          const ext = rel.split(".").pop()?.toLowerCase() ?? "";
+          await d.storage.putAsset(`${job.report_id}/${rel}`, await readFile(join(dir, rel)), MIME[ext]);
+          assets.push(rel);
+        }
+      }
+      if (!d.queue.get(job.id)) {
+        await d.storage.deleteReport(job.report_id, assets);
+        return;
       }
       const token = newToken();
-      d.queue.complete(job.id, { tokenHash: sha256Hex(token), expiresAt: d.queue.now() + d.retentionDays * 86400_000 });
-      payload = { event: "scan.done", jobId: job.id, reportId: job.report_id, url: job.url, email, token, reportUrl: `${d.reportBaseUrl}/r/${token}` };
+      d.queue.complete(job.id, { tokenHash: sha256Hex(token), expiresAt: d.queue.now() + d.retentionDays * 86400_000, assets });
+      payload = {
+        event: "scan.done", jobId: job.id, reportId: job.report_id, url: job.url, ...meta, email, token,
+        reportUrl: `${d.reportBaseUrl}/r/${token}`, summary: summarizeReport(res.report),
+      };
     } catch (e) {
+      if (!d.queue.get(job.id)) return;
       const msg = e instanceof Error ? e.message : "scan_failed";
       d.queue.fail(job.id, msg);
-      payload = { event: "scan.failed", jobId: job.id, reportId: job.report_id, url: job.url, email, error: msg.slice(0, 200) };
+      payload = { event: "scan.failed", jobId: job.id, reportId: job.report_id, url: job.url, ...meta, email, error: msg.slice(0, 200) };
     } finally {
-      await rm(dir, { recursive: true, force: true });
+      if (dir) await rm(dir, { recursive: true, force: true });
     }
     await sendWebhook(payload, { ...d.webhook, log: d.log });
   }

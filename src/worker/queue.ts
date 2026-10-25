@@ -3,6 +3,13 @@ import { newId } from "./crypto.ts";
 
 export type JobStatus = "queued" | "running" | "done" | "failed";
 
+/** Where a job came from (CONNECTORS.md section 1). Hosted scans of the public form are "website". */
+export const SOURCES = ["website", "account", "api", "wordpress", "extension"] as const;
+export type Source = (typeof SOURCES)[number];
+export const TRIGGERS = ["manual", "change_event", "schedule", "upload"] as const;
+export type Trigger = (typeof TRIGGERS)[number];
+export type JobKind = "scan" | "capture";
+
 export interface Job {
   id: string;
   status: JobStatus;
@@ -18,6 +25,16 @@ export interface Job {
   attempts: number;
   /** Transient encrypted email, nulled when the job finishes. */
   email_enc: string | null;
+  /** "scan" browses the site; "capture" builds the report from an uploaded recording. */
+  kind: JobKind;
+  source: Source;
+  trigger_kind: Trigger;
+  account_ref: string | null;
+  site_ref: string | null;
+  /** 0 skips AI enrichment. */
+  ai: number;
+  /** Capture jobs: gzipped JSON of the validated upload, nulled when the job finishes. */
+  input_gz: Uint8Array | null;
 }
 
 export interface ReportRow {
@@ -27,6 +44,8 @@ export interface ReportRow {
   url: string;
   created_at: number;
   expires_at: number;
+  /** JSON array of asset file names stored under assets/<report id>/, so erasure can remove them from R2. */
+  assets: string | null;
 }
 
 export interface EnqueueInput {
@@ -35,6 +54,14 @@ export interface EnqueueInput {
   ipHash: string;
   domain: string;
   emailEnc?: string;
+  kind?: JobKind;
+  source?: Source;
+  trigger?: Trigger;
+  accountRef?: string;
+  siteRef?: string;
+  /** Default true. */
+  ai?: boolean;
+  input?: Uint8Array;
 }
 
 const SCHEMA = `
@@ -73,10 +100,36 @@ CREATE INDEX IF NOT EXISTS hits_lookup ON hits(scope, key_hash, ts);
 export const MAX_ATTEMPTS = 2;
 export const STALE_RUNNING_MS = 10 * 60 * 1000;
 
+/** Columns added after the first release. Each is added once; running this again changes nothing. */
+const MIGRATIONS: Array<{ table: string; column: string; ddl: string }> = [
+  { table: "jobs", column: "kind", ddl: "TEXT NOT NULL DEFAULT 'scan'" },
+  { table: "jobs", column: "source", ddl: "TEXT NOT NULL DEFAULT 'website'" },
+  { table: "jobs", column: "trigger_kind", ddl: "TEXT NOT NULL DEFAULT 'manual'" },
+  { table: "jobs", column: "account_ref", ddl: "TEXT" },
+  { table: "jobs", column: "site_ref", ddl: "TEXT" },
+  { table: "jobs", column: "ai", ddl: "INTEGER NOT NULL DEFAULT 1" },
+  { table: "jobs", column: "input_gz", ddl: "BLOB" },
+  { table: "reports", column: "assets", ddl: "TEXT" },
+];
+
+export function migrate(db: DatabaseSync): void {
+  for (const m of MIGRATIONS) {
+    const have = (db.prepare(`PRAGMA table_info(${m.table})`).all() as { name: string }[]).some((c) => c.name === m.column);
+    if (have) continue;
+    try {
+      db.exec(`ALTER TABLE ${m.table} ADD COLUMN ${m.column} ${m.ddl}`);
+    } catch (e) {
+      // Another process added it between the check and the ALTER.
+      if (!/duplicate column/i.test((e as Error).message)) throw e;
+    }
+  }
+}
+
 export function openDb(path: string): DatabaseSync {
   const db = new DatabaseSync(path);
   db.exec("PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL; PRAGMA busy_timeout = 5000;");
   db.exec(SCHEMA);
+  migrate(db);
   return db;
 }
 
@@ -94,10 +147,14 @@ export class JobQueue {
     const reportId = newId();
     this.db
       .prepare(
-        `INSERT INTO jobs (id,status,url,email_hash,ip_hash,domain,created_at,report_id,email_enc)
-         VALUES (?,?,?,?,?,?,?,?,?)`,
+        `INSERT INTO jobs (id,status,url,email_hash,ip_hash,domain,created_at,report_id,email_enc,kind,source,trigger_kind,account_ref,site_ref,ai,input_gz)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       )
-      .run(id, "queued", input.url, input.emailHash, input.ipHash, input.domain, this.now(), reportId, input.emailEnc ?? null);
+      .run(
+        id, "queued", input.url, input.emailHash, input.ipHash, input.domain, this.now(), reportId, input.emailEnc ?? null,
+        input.kind ?? "scan", input.source ?? "website", input.trigger ?? "manual", input.accountRef ?? null, input.siteRef ?? null,
+        input.ai === false ? 0 : 1, input.input ?? null,
+      );
     return { id, reportId };
   }
 
@@ -125,16 +182,16 @@ export class JobQueue {
     }
   }
 
-  complete(id: string, report: { tokenHash: string; kind?: string; expiresAt: number }): void {
+  complete(id: string, report: { tokenHash: string; kind?: string; expiresAt: number; assets?: string[] }): void {
     const job = this.get(id);
     if (!job) throw new Error("unknown job");
     const t = this.now();
     this.db.exec("BEGIN IMMEDIATE");
     try {
       this.db
-        .prepare("INSERT INTO reports (id,token_hash,kind,url,created_at,expires_at) VALUES (?,?,?,?,?,?)")
-        .run(job.report_id, report.tokenHash, report.kind ?? "free", job.url, t, report.expiresAt);
-      this.db.prepare("UPDATE jobs SET status='done', finished_at=?, email_enc=NULL, error=NULL WHERE id=?").run(t, id);
+        .prepare("INSERT INTO reports (id,token_hash,kind,url,created_at,expires_at,assets) VALUES (?,?,?,?,?,?,?)")
+        .run(job.report_id, report.tokenHash, report.kind ?? "free", job.url, t, report.expiresAt, report.assets?.length ? JSON.stringify(report.assets) : null);
+      this.db.prepare("UPDATE jobs SET status='done', finished_at=?, email_enc=NULL, input_gz=NULL, error=NULL WHERE id=?").run(t, id);
       this.db.exec("COMMIT");
     } catch (e) {
       try { this.db.exec("ROLLBACK"); } catch { /* ignore */ }
@@ -144,7 +201,7 @@ export class JobQueue {
 
   fail(id: string, error: string): void {
     this.db
-      .prepare("UPDATE jobs SET status='failed', finished_at=?, error=?, email_enc=NULL WHERE id=?")
+      .prepare("UPDATE jobs SET status='failed', finished_at=?, error=?, email_enc=NULL, input_gz=NULL WHERE id=?")
       .run(this.now(), error.slice(0, 300), id);
   }
 
@@ -178,6 +235,40 @@ export class JobQueue {
 
   reportByTokenHash(tokenHash: string): ReportRow | undefined {
     return this.db.prepare("SELECT * FROM reports WHERE token_hash=?").get(tokenHash) as unknown as ReportRow | undefined;
+  }
+
+  reportById(id: string): ReportRow | undefined {
+    return this.db.prepare("SELECT * FROM reports WHERE id=?").get(id) as unknown as ReportRow | undefined;
+  }
+
+  /** Asset file names recorded for a finished report (empty when none or unknown). */
+  reportAssets(id: string): string[] {
+    const raw = this.reportById(id)?.assets;
+    if (!raw) return [];
+    try {
+      const v = JSON.parse(raw);
+      return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Erasure: remove the report row and the job that made it (its URL, hashes and any uploaded input),
+   * whatever its status. A running job whose row is gone discards its result when it finishes.
+   * Returns how many rows were removed; 0 when there was nothing, which is fine.
+   */
+  eraseReport(reportId: string): number {
+    this.db.exec("BEGIN");
+    try {
+      const a = this.db.prepare("DELETE FROM reports WHERE id=?").run(reportId).changes as number;
+      const b = this.db.prepare("DELETE FROM jobs WHERE report_id=?").run(reportId).changes as number;
+      this.db.exec("COMMIT");
+      return Number(a) + Number(b);
+    } catch (e) {
+      try { this.db.exec("ROLLBACK"); } catch { /* ignore */ }
+      throw e;
+    }
   }
 
   /** Delete expired report rows and old finished jobs. Returns the report ids removed. */

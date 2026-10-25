@@ -24,6 +24,9 @@ export function fakePipeline(over: Partial<Pipeline> = {}): Pipeline {
     async run(url, opts) {
       return { report: { target: url.href, reportId: opts.reportId }, html: `<html><body>report for ${url.hostname}<script>var a=1</script></body></html>`, pdf: Buffer.from("%PDF-fake") };
     },
+    async fromCapture(upload, opts) {
+      return { report: { target: upload.capture.target, reportId: opts.reportId }, html: `<html><body>recording of ${upload.capture.target}</body></html>`, pdf: Buffer.from("%PDF-fake") };
+    },
     ...over,
   };
 }

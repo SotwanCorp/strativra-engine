@@ -11,7 +11,9 @@ import { assertPublicUrl, normalizeUrl } from "./core/net/ssrf.ts";
 import { buildReport, redactForFree } from "./core/report.ts";
 import { renderPdf } from "./report/pdf.ts";
 import { renderReportHtml } from "./report/render.ts";
-import type { Capture, Report, ReportKind } from "./types.ts";
+import { applyUpload } from "./core/upload.ts";
+import type { CaptureUpload } from "./core/upload.ts";
+import type { Capture, Recording, Report, ReportKind } from "./types.ts";
 import type { Pipeline } from "./worker/pipeline.ts";
 import { enrichReport } from "./ai/enrich.ts";
 import { DailyBreaker } from "./ai/budget.ts";
@@ -61,16 +63,21 @@ async function inlineScreenshots(report: Report, dir: string): Promise<Record<st
   return out;
 }
 
-export async function scan(
-  url: URL,
-  o: { region: string; reportId: string; screenshotDir: string } & PipelineOptions,
+/**
+ * Everything after the capture: decode, rules, (AI), report HTML and PDF. Shared by hosted scans and
+ * uploaded recordings. `ai: false` skips the enricher (the deterministic plan still renders).
+ * Never touches the network or a browser, except the PDF printer, which runs offline.
+ */
+export async function finishReport(
+  capture: Capture,
+  o: { reportId: string; screenshotDir?: string; ai?: boolean; recording?: Recording } & PipelineOptions,
 ): Promise<ScanOutput> {
   const kind = o.kind ?? "free";
-  const capture = await runCapture(url.href, { ...o.run, region: o.region, screenshotDir: o.screenshotDir });
   const siteHost = hostOf(capture.finalUrl || capture.target);
   const hits = decodeAll(capture.scenarios.flatMap((s) => s.requests), siteHost);
   let report = buildReport(capture, hits, kind, o.reportId);
-  if (o.enrich) {
+  if (o.recording) report = { ...report, recording: o.recording };
+  if (o.enrich && o.ai !== false) {
     try {
       report = await o.enrich(report, capture, kind);
     } catch {
@@ -86,10 +93,24 @@ export async function scan(
     }
   }
   const shown = kind === "free" ? redactForFree(report) : report;
-  const inlineAssets = await inlineScreenshots(shown, o.screenshotDir);
+  const inlineAssets = o.screenshotDir ? await inlineScreenshots(shown, o.screenshotDir) : {};
   const html = renderReportHtml(shown, { kind, bookUrl: o.bookUrl ?? process.env.BOOK_URL ?? "https://strativra.com/audit", inlineAssets });
   const pdf = o.pdf === false ? undefined : await renderPdf(html).catch(() => undefined);
   return { capture, report: shown, html, pdf };
+}
+
+export async function scan(
+  url: URL,
+  o: { region: string; reportId: string; screenshotDir: string; ai?: boolean } & PipelineOptions,
+): Promise<ScanOutput> {
+  const capture = await runCapture(url.href, { ...o.run, region: o.region, screenshotDir: o.screenshotDir });
+  return finishReport(capture, o);
+}
+
+/** A recording uploaded from the browser extension: no browsing, no network. */
+export async function scanUpload(up: CaptureUpload, o: { reportId: string; ai?: boolean } & PipelineOptions): Promise<ScanOutput> {
+  const { capture, recording } = applyUpload(up);
+  return finishReport(capture, { ...o, recording });
 }
 
 export function createPipeline(opts: PipelineOptions = {}): Pipeline {
@@ -99,6 +120,10 @@ export function createPipeline(opts: PipelineOptions = {}): Pipeline {
     validateUrl: async (input: string) => (opts.run?.upstreamProxy ? normalizeUrl(input) : assertPublicUrl(input)),
     run: async (url, o) => {
       const { report, html, pdf } = await scan(url, { ...opts, ...o });
+      return { report, html, pdf };
+    },
+    fromCapture: async (upload, o) => {
+      const { report, html, pdf } = await scanUpload(upload, { ...opts, ...o });
       return { report, html, pdf };
     },
   };

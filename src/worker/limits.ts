@@ -37,6 +37,11 @@ export class Limits {
     return Math.max(1, Math.ceil((pivot + windowMs - this.now()) / 1000));
   }
 
+  /** Queue depth only. For work that never touches a third-party site (uploaded recordings). */
+  checkQueue(queueDepth: number): LimitResult {
+    return queueDepth >= this.cfg.maxQueueDepth ? { ok: false, scope: "queue", retryAfterSec: 60 } : { ok: true };
+  }
+
   /** Read-only check. */
   check(h: { ipHash: string; emailHash: string; domainHash: string }, queueDepth: number): LimitResult {
     if (queueDepth >= this.cfg.maxQueueDepth) return { ok: false, scope: "queue", retryAfterSec: 60 };

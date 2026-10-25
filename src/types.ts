@@ -257,6 +257,20 @@ export interface Finding {
 
 export type ReportKind = "free" | "paid";
 
+/**
+ * Set on reports built from a capture the person recorded in their own browser (Chrome extension),
+ * not from a scan we ran. The report lists the guided steps they followed.
+ */
+export interface Recording {
+  source: "extension";
+  /** Steps followed while recording, as uploaded (redacted). `ts` is on the same clock as request `ts`. */
+  guidedSteps: Array<{ name: string; action: string; ok: boolean; ts: number; pageUrl?: string }>;
+  /** Moment of the person's consent click, when known. */
+  consentMarkerTs?: number;
+  /** Requests in the recording after validation. */
+  requests: number;
+}
+
 export interface StackItem {
   vendor: Vendor | "cmp" | "platform";
   name: string;
@@ -284,6 +298,8 @@ export interface Report {
   scan: { pages: number; durationMs: number; banner: Partial<Record<Scenario, BannerOutcome>>; aborted?: Capture["aborted"]; incomplete?: Capture["incomplete"] };
   /** What this site should track. Set by the AI layer (enrichReport) or its deterministic fallback. */
   plan?: InferredPlan;
+  /** Set when the report comes from a browser recording instead of a hosted scan. */
+  recording?: Recording;
 }
 
 /* ------------------------------------------------------------------ */

@@ -9,7 +9,11 @@ export interface Storage {
   getReportJson(id: string): Promise<string | undefined>;
   putAsset(key: string, buf: Buffer, contentType?: string): Promise<void>;
   getAsset(key: string): Promise<Buffer | undefined>;
-  deleteReport(id: string): Promise<void>;
+  /**
+   * Erasure: remove the report's html, json, pdf and assets. Idempotent. `assets` lists the asset file
+   * names stored under `<id>/` (the local store removes the whole folder, R2 cannot list so it needs the names).
+   */
+  deleteReport(id: string, assets?: string[]): Promise<void>;
   /** Remove files older than `days`. R2 relies on the bucket lifecycle rule, so it returns 0. */
   deleteOlderThan(days: number): Promise<number>;
 }
@@ -154,8 +158,13 @@ export class S3Storage implements Storage {
   async getReportPdf(id: string) { return this.get(`reports/${id}/report.pdf`); }
   async putAsset(key: string, buf: Buffer, contentType = "application/octet-stream") { await this.put(`assets/${key}`, buf, contentType); }
   async getAsset(key: string) { return this.get(`assets/${key}`); }
-  async deleteReport(id: string) {
-    for (const k of [`reports/${id}/report.html`, `reports/${id}/report.json`, `reports/${id}/report.pdf`]) await this.req("DELETE", k);
+  async deleteReport(id: string, assets: string[] = []) {
+    const keys = [`reports/${id}/report.html`, `reports/${id}/report.json`, `reports/${id}/report.pdf`, ...assets.map((a) => `assets/${id}/${a}`)];
+    for (const k of keys) {
+      const r = await this.req("DELETE", k);
+      // A missing object is fine (idempotent). Anything else must surface, so the caller keeps the DB row and can retry.
+      if (!r.ok && r.status !== 404) throw new Error(`storage delete failed: ${r.status}`);
+    }
   }
   /** Expiry is the bucket lifecycle rule (90 days), see deploy/README.md. */
   async deleteOlderThan() { return 0; }
