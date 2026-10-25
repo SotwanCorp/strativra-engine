@@ -8,9 +8,14 @@
     "node": ">=22.6"
   },
   "scripts": {
-    "check": "tsc --noEmit",
+    "check": "tsc --noEmit && tsc --noEmit -p src/extension",
     "test": "node --experimental-strip-types --test --test-reporter=spec \"src/**/*.test.ts\"",
-    "worker": "node --experimental-strip-types --disable-warning=ExperimentalWarning src/worker/main.ts"
+    "worker": "node --experimental-strip-types --disable-warning=ExperimentalWarning src/worker/main.ts",
+    "ext:check": "tsc --noEmit -p src/extension",
+    "ext:build": "wxt build src/extension",
+    "ext:zip": "wxt zip src/extension",
+    "ext:dev": "wxt src/extension",
+    "test:extension": "STRV_E2E=1 wxt build src/extension && node --experimental-strip-types --disable-warning=ExperimentalWarning --test --test-reporter=spec \"src/extension/e2e/*.e2e.ts\""
   },
   "devDependencies": {
     "@types/chrome": "0.3.4",
