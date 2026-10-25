@@ -1,4 +1,4 @@
-import type { BusinessModel, ContractStatus, Evidence, Finding, InferredPlan, PlanEventStatus, PlanStatus, Report, Scenario, Severity, StackItem, Vendor } from "../types.ts";
+import type { BusinessModel, ContractStatus, Evidence, Finding, InferredPlan, PlanEventStatus, PlanStatus, Recording, Report, Scenario, Severity, StackItem, Vendor } from "../types.ts";
 
 export interface RenderOpts {
   kind: "free" | "paid";
@@ -267,6 +267,21 @@ ${rows ? `<ul class="convs">${rows}</ul>` : `<p>We did not find a clear conversi
 ${events ? `<h3 class="evh">Expected events</h3><ul class="evcs">${events}</ul>` : ""}</section>`;
 }
 
+/* ---------------------------- recording ---------------------------- */
+
+/** Reports built from a browser recording list the guided steps the person followed. */
+function recordingHtml(rec: Recording): string {
+  const steps = rec.guidedSteps.map((s) => {
+    let where = "";
+    try { where = s.pageUrl ? new URL(s.pageUrl).pathname : ""; } catch { /* no path to show */ }
+    return `<li class="conv"><span class="t">${esc(s.name)}</span><span class="st${s.ok ? "" : " not_testable"}">${s.ok ? "Done" : "Skipped"}</span><span>${esc(s.action)}${where ? ` <span class="lab">${esc(trunc(where, 60))}</span>` : ""}</span></li>`;
+  }).join("");
+  const split = rec.consentMarkerTs !== undefined ? " Requests are split into before and after your consent click." : "";
+  return `<section aria-labelledby="h-rec"><h2 id="h-rec">What you recorded</h2>
+<p class="sub">${esc(rec.requests)} requests recorded in your own browser. We made no request to your site.${split}</p>
+${steps ? `<ul class="convs">${steps}</ul>` : `<p>You did not follow any guided steps.</p>`}</section>`;
+}
+
 /* ---------------------------- page ---------------------------- */
 
 function css(assetBase?: string): string {
@@ -481,10 +496,11 @@ export function renderReportHtml(report: Report, opts: RenderOpts, extras: Rende
 <div class="top"><span class="brand">Strativra</span><span class="badge">${paid ? "Tracking Audit" : "Free scan"}</span></div>
 <header>
 <h1>${esc(report.target)}</h1>
-<ul class="meta"><li><b>Date</b>${date}</li><li><b>Scanned from</b>${esc(report.region)}</li><li><b>Report</b>${paid ? "Paid audit" : "Free scan"}</li><li><b>Pages</b>${esc(report.scan.pages)}</li></ul>
+<ul class="meta"><li><b>Date</b>${date}</li><li><b>${report.recording ? "Source" : "Scanned from"}</b>${esc(report.region)}</li><li><b>Report</b>${paid ? "Paid audit" : "Free scan"}</li><li><b>Pages</b>${esc(report.scan.pages)}</li></ul>
 ${blocked ? "" : aborted}
 </header>
 ${blocked ? abortedBody(report, opts) : `
+${report.recording ? recordingHtml(report.recording) : ""}
 <section aria-labelledby="h-setup"><h2 id="h-setup">Your setup</h2>${buildMap(report, paid)}</section>
 ${report.plan ? planHtml(report.plan) : ""}
 

@@ -129,7 +129,11 @@ export function redactEmails(s: string): string {
  */
 export function redactFree(input: string, max: number): string {
   const pre = max * 4;
-  let s = input.length > pre ? input.slice(0, pre).replace(/[^\s,;&=?/"'<>]*$/, "") : input;
+  let s = input;
+  if (input.length > pre) {
+    // A token holding an @ that the cut left half-written is dropped (its domain is gone, so it is not an email any more).
+    s = input.slice(0, pre).replace(/[^\s,;&=?/"'<>]*(?:@|%40)[^\s,;&=?/"'<>@]*$/i, "");
+  }
   s = redactEmails(s);
   s = s.replace(DIGITS, (m) => {
     const d = m.replace(/\D/g, "");

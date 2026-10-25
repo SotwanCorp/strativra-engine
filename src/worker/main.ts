@@ -50,6 +50,7 @@ async function main() {
     ? new S3Storage({ endpoint: e.R2_ENDPOINT, bucket: e.R2_BUCKET, accessKeyId: e.R2_ACCESS_KEY_ID, secretAccessKey: e.R2_SECRET_ACCESS_KEY })
     : new LocalStorage(join(config.dataDir, "store"));
   log(`storage: ${storage instanceof S3Storage ? "r2" : "local"}`);
+  if (!config.apiKey) log("ENGINE_API_KEY is not set: POST /captures and DELETE /reports/{id} answer 401 and /scans refuses source, trigger, accountRef and siteRef");
 
   // Nothing is running yet, so any "running" job is a leftover from a crash.
   const [requeued, failed] = queue.recover(0);

@@ -13,6 +13,7 @@ One EU Hetzner VPS (CX22 or bigger, Ubuntu 24.04) running Docker. SQLite queue, 
 | `REPORT_BASE_URL` | yes in prod | `http://127.0.0.1:PORT` | Public base of the worker, used to build `reportUrl` (`/r/<token>`). |
 | `TURNSTILE_SECRET` | yes in prod | none | Cloudflare Turnstile secret. |
 | `ALLOW_NO_TURNSTILE` | no | unset | `1` allows running with no `TURNSTILE_SECRET` (dev only, logs a warning). |
+| `ENGINE_API_KEY` | yes in prod | none | Bearer key the site and platform send to `/scans`, `/captures` and `/reports`. With no key, `/captures` and `DELETE /reports/{id}` answer 401 (they have no Turnstile to fall back on), and `/scans` refuses `source`, `trigger`, `accountRef` and `siteRef`. |
 | `DATA_DIR` | no | `./data` (`/data` in Docker) | SQLite file `worker.sqlite` and the local store. |
 | `R2_ENDPOINT`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` | no | none | All four set: reports go to R2. Otherwise local disk under `DATA_DIR/store`. |
 | `CHROMIUM_PATH` | yes | set in image | Chromium for `playwright-core`. |
@@ -25,10 +26,33 @@ One EU Hetzner VPS (CX22 or bigger, Ubuntu 24.04) running Docker. SQLite queue, 
 | `TRUST_PROXY` | no | unset | `1` reads the client IP from `X-Forwarded-For`. Only enable behind a proxy that overwrites it. |
 | `NODE_ENV` | no | `production` | `test` bypasses Turnstile. Never set in prod. |
 
+## API (all with `Authorization: Bearer $ENGINE_API_KEY`)
+
+Contract: `CONNECTORS.md` section 5 in `SotwanCorp/strativra`; details and decisions in `SPEC.md` section 10.
+
+| Call | Notes |
+|---|---|
+| `POST /scans` | `{url, email?, turnstileToken?, source?, trigger?, accountRef?, siteRef?, ai?}`. `source`: `website` (default), `account`, `api`, `wordpress`, `extension`. `trigger`: `manual` (default), `change_event`, `schedule`, `upload`. Refs: 1 to 64 chars of `A-Za-z0-9_-`. `ai`: boolean, default true; `false` skips AI enrichment. `email` is required for `website`, optional for the other sources. 202 `{jobId}`. Errors: `{error}` 400 `invalid_url|invalid_email|invalid_source|invalid_trigger|invalid_account_ref|invalid_site_ref|invalid_ai`, 429, 403. |
+| `POST /captures` | Chrome extension upload, through the platform. `Content-Type: application/json`, optional `Content-Encoding: gzip`. Body `{capture, guidedSteps, consentMarkerTs, source:"extension", trigger:"upload", accountRef, siteRef, ai}`. Caps: 2 MB as sent, 10 MB unzipped, 5,000 requests, 64 KB per body. The engine validates and re-redacts, then builds the report with no browsing and no request to the recorded site. 202 `{jobId}`. Errors are `application/problem+json` (`code`): 400 `invalid_gzip|invalid_json|invalid_capture`, 413 `payload_too_large`, 415, 429 `rate_limited`, 401. |
+| `GET /scans/{jobId}` | `{id, status, position, error?}` for scans and captures. |
+| `DELETE /reports/{reportId}` | Erasure. `reportId` is the id from the webhook. Deletes html, json, pdf, assets and the DB rows; 204 even when nothing exists; 500 `storage_error` means retry. |
+
+Rate limits (`LIMIT_*`) apply to `/scans`. `/captures` only obeys `MAX_QUEUE_DEPTH`. Platform quotas are the platform's job. The SQLite file migrates itself on start (new job columns `kind`, `source`, `trigger_kind`, `account_ref`, `site_ref`, `ai`, `input_gz`, and `reports.assets`); no manual step. An uploaded capture is held gzipped in the job row only until the job ends.
+
 ## Webhook contract
 
-`POST SITE_WEBHOOK_URL`, JSON body `{event: "scan.done"|"scan.failed", jobId, reportId, url, email, token, reportUrl, error}`.
-Headers: `X-Strativra-Timestamp` (unix seconds) and `X-Strativra-Signature: sha256=HMAC_SHA256(WEBHOOK_SECRET, "<timestamp>.<raw body>")`. The site must verify the signature, reject timestamps older than 5 minutes, send the email, and store the lead via `submitLead()`. Three attempts with backoff.
+`POST SITE_WEBHOOK_URL`, JSON body:
+
+```
+{event: "scan.done"|"scan.failed", jobId, reportId, url, source, trigger, accountRef?, siteRef?, ai,
+ email?, token?, reportUrl?, error?, summary?}
+```
+
+- `source`, `trigger`, `accountRef`, `siteRef` and `ai` echo what the job was created with (old jobs: `website`, `manual`, `true`). `accountRef` and `siteRef` are absent when not sent.
+- `summary` (only on `scan.done`): `{counts: {critical, high, medium, low}, top: [{id, title, severity}] (the first 3 open findings), conversions: [{type, status}], aborted?: {reason, detail}}`.
+- `email` is absent for jobs without one (API, account and extension sources); `token` and `reportUrl` only on `scan.done`.
+
+Headers: `X-Strativra-Timestamp` (unix seconds) and `X-Strativra-Signature: sha256=HMAC_SHA256(WEBHOOK_SECRET, "<timestamp>.<raw body>")`. The site must verify the signature, reject timestamps older than 5 minutes, send the email when there is one, and store the lead via `submitLead()` for `website` scans. Three attempts with backoff. A job erased with `DELETE /reports/{id}` while it runs sends no webhook.
 
 ## Hetzner setup
 
@@ -70,7 +94,7 @@ Chromium sandbox: running non-root in Docker needs either Docker's default secco
 
 ## Retention and cleanup
 
-Reports expire 90 days after completion. A daily job (and one at startup) deletes expired `reports` rows, jobs older than the retention window, and stale rate-limit hits, and in local mode removes report and asset files. Unknown or expired tokens return the same 404 as invalid ones.
+Reports expire 90 days after completion, or earlier through `DELETE /reports/{reportId}` (right to erasure). A daily job (and one at startup) deletes expired `reports` rows, jobs older than the retention window, and stale rate-limit hits, and in local mode removes report and asset files. Unknown or expired tokens return the same 404 as invalid ones.
 
 ## Backups of the SQLite file
 

@@ -163,7 +163,9 @@ test("total timeout is enforced and the browser is closed", { skip }, async () =
   const t = Date.now();
   const c = await runCapture(`${fx.origin}/`, { region: "test", allowPrivate: true, settleMs: 5000, timeoutMs: 3000, deps: stubDeps(fx.origin) });
   assert.ok(Date.now() - t < 10_000);
-  assert.equal(c.aborted?.reason, "timeout");
+  // Since 6a5721a a pass that finished before the budget ran out is kept (incomplete), so a slow
+  // walk is not reported as a slow site. Either way the budget is enforced.
+  assert.ok(c.aborted?.reason === "timeout" || c.incomplete?.reason === "time_budget", JSON.stringify({ aborted: c.aborted, incomplete: c.incomplete }));
 });
 
 /* ---------------- consent.ts directly ---------------- */
