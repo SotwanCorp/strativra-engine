@@ -1,0 +1,65 @@
+<!doctype html><html><head><meta charset="utf-8"><title>Fixture Services</title><meta name="generator" content="WordPress 6.6"></head>
+<body>
+<header><nav>
+  <a href="/">Home</a> <a href="/contact">Contact</a> <a href="/about">About us</a> <a href="/book">Book a call</a>
+  <a href="/login">Log in</a> <a href="/logout">Log out</a> <a href="/wp-admin/">Admin</a> <a href="mailto:hello@example.test">Mail</a>
+</nav>
+<form role="search" action="/" id="site-search"><input type="search" name="s" placeholder="Search"><button type="submit">Search</button></form>
+</header>
+<main>
+<h1>We fix tracking</h1>
+<section id="contact"><h2>Contact us</h2>
+<div class="wpcf7">
+<form id="contact-form" class="wpcf7-form" method="post" action="/contact-submit">
+  <label>Your name <input type="text" name="your-name" autocomplete="name"></label>
+  <label>Email <input type="email" name="your-email"></label>
+  <label>Phone <input type="tel" name="your-phone"></label>
+  <label>Message <textarea name="your-message"></textarea></label>
+  <input type="text" name="hp-field" class="wpcf7-hp" tabindex="-1" style="position:absolute;left:-9999px">
+  <button type="submit">Send message</button>
+</form></div></section>
+
+<section id="quote"><h2>Request a quote</h2><iframe id="quote-frame" src="/quote-frame.html" width="600" height="300"></iframe></section>
+
+<section id="booking"><h2>Book a call</h2>
+<div class="calendly-inline-widget" data-url="https://calendly.com/fixture/30min" style="min-width:320px;height:300px">
+  <iframe src="/calendly-placeholder.html" title="Calendly placeholder" width="400" height="280"></iframe>
+</div></section>
+
+<aside id="client-area"><h3>Client area</h3>
+<form id="login-form" method="post" action="/login">
+  <input type="text" name="username" autocomplete="username" placeholder="Username">
+  <input type="password" name="password" autocomplete="current-password" placeholder="Password">
+  <button type="submit">Log in</button>
+</form></aside>
+
+<section id="signup"><h2>Create your account</h2>
+<div class="signup-box">
+  <input type="email" name="signup-email" autocomplete="email" placeholder="Email">
+  <input type="password" name="signup-password" autocomplete="new-password" placeholder="Password">
+  <button type="button">Create account</button>
+</div></section>
+
+<section id="reach"><h2>Reach us</h2>
+  <a id="call" href="tel:+21612345678">Call us</a>
+  <a id="mail" href="mailto:hello@example.test">Email us</a>
+  <a id="wa" href="https://wa.me/21612345678">WhatsApp</a>
+  <a id="brochure" href="/files/brochure.pdf">Download the brochure</a>
+</section>
+</main>
+<footer><h3>Newsletter</h3>
+<form id="newsletter" method="post" action="/subscribe">
+  <input type="email" name="email" placeholder="Your email">
+  <button type="submit">Subscribe</button>
+</form></footer>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a');
+    if (a) window.dataLayer.push({ event: 'link_click', href: a.getAttribute('href') });
+  });
+  document.addEventListener('focusin', function (e) {
+    if (e.target.closest && e.target.closest('form')) window.dataLayer.push({ event: 'form_start_fixture' });
+  });
+</script>
+</body></html>

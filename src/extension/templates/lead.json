@@ -1,0 +1,10 @@
+{
+  "id": "lead",
+  "name": "Lead form",
+  "conversionType": "lead",
+  "steps": [
+    { "id": "open_form", "name": "open_form_page", "label": "Open the page with your main form", "action": "Opened the form page", "at": "page_load", "conversionType": "lead" },
+    { "id": "form_start", "name": "form_start", "label": "Click into the first field. No need to type.", "action": "Clicked into the first field", "at": "click", "conversionType": "lead" },
+    { "id": "stop", "name": "stopped", "label": "Stop before you submit or pay", "action": "Stopped before submitting", "at": "now", "final": true }
+  ]
+}

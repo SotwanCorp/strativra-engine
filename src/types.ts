@@ -30,6 +30,8 @@ export interface CapturedRequest {
   resourceType: string;
   /** True when we aborted it (safety block: form POST, payment endpoint, SSRF). */
   blocked?: BlockReason;
+  /** Network error text when the request failed for any other reason (DNS, refused, blocked egress, ad blocker). */
+  failed?: string;
 }
 
 export type BlockReason = "ssrf" | "form_submit" | "payment" | "unsafe_method" | "limit";
@@ -106,6 +108,12 @@ export interface Capture {
   platformHints: string[];
   /** Set when the whole run could not proceed. */
   aborted?: { reason: "bot_protection" | "timeout" | "unreachable" | "not_html"; detail: string };
+  /**
+   * Set when the run budget ran out after at least one consent scenario finished. `scenarios` then
+   * holds only the finished ones (the one cut short is dropped, with its walk steps), so rules never
+   * judge a half-run scenario. `done` lists the finished scenarios.
+   */
+  incomplete?: { reason: "time_budget"; detail: string; done: Scenario[] };
 }
 
 /* ------------------------------------------------------------------ */
@@ -155,6 +163,8 @@ export interface DecodedHit {
   consent?: ConsentSignals;
   /** Hit sent to the site's own domain (sGTM or proxy). */
   firstParty: boolean;
+  /** Set when our capture layer aborted the request, so it never reached the vendor. */
+  blocked?: BlockReason;
 }
 
 /* ------------------------------------------------------------------ */
@@ -247,6 +257,20 @@ export interface Finding {
 
 export type ReportKind = "free" | "paid";
 
+/**
+ * Set on reports built from a capture the person recorded in their own browser (Chrome extension),
+ * not from a scan we ran. The report lists the guided steps they followed.
+ */
+export interface Recording {
+  source: "extension";
+  /** Steps followed while recording, as uploaded (redacted). `ts` is on the same clock as request `ts`. */
+  guidedSteps: Array<{ name: string; action: string; ok: boolean; ts: number; pageUrl?: string }>;
+  /** Moment of the person's consent click, when known. */
+  consentMarkerTs?: number;
+  /** Requests in the recording after validation. */
+  requests: number;
+}
+
 export interface StackItem {
   vendor: Vendor | "cmp" | "platform";
   name: string;
@@ -271,5 +295,42 @@ export interface Report {
   counts: Record<Severity, number>;
   /** One line per top finding: why it is ranked there. */
   rankNotes: Record<string, string>;
-  scan: { pages: number; durationMs: number; banner: Partial<Record<Scenario, BannerOutcome>>; aborted?: Capture["aborted"] };
+  scan: { pages: number; durationMs: number; banner: Partial<Record<Scenario, BannerOutcome>>; aborted?: Capture["aborted"]; incomplete?: Capture["incomplete"] };
+  /** What this site should track. Set by the AI layer (enrichReport) or its deterministic fallback. */
+  plan?: InferredPlan;
+  /** Set when the report comes from a browser recording instead of a hosted scan. */
+  recording?: Recording;
+}
+
+/* ------------------------------------------------------------------ */
+/* Inferred tracking plan (single source of truth; the AI layer re-exports)  */
+/* ------------------------------------------------------------------ */
+
+export type BusinessModel = "ecommerce" | "lead_gen" | "saas" | "booking" | "content" | "local_service" | "other";
+
+export type PlanStatus = "tracked" | "partial" | "missing" | "unknown";
+export type PlanEventStatus = "seen" | "missing" | "unknown";
+
+export interface PlanConversion {
+  type: ConversionType;
+  status: PlanStatus;
+  /** One plain sentence. No numbers, no prices. */
+  why: string;
+  /** Evidence ids from this scan ("r", "cp:<id>", ...). */
+  evidenceIds: string[];
+}
+
+export interface PlanEvent {
+  /** From a fixed vocabulary (GA4 recommended + Meta standard events), never free text. */
+  name: string;
+  vendor: "ga4" | "meta";
+  conversionType: ConversionType;
+  status: PlanEventStatus;
+}
+
+/** No values, no volumes, no numbers. The paid audit asks the client for real values. */
+export interface InferredPlan {
+  businessModel: { value: BusinessModel; confidence: number; source: "jev" | "rules" | "claude" };
+  conversions: PlanConversion[];
+  events: PlanEvent[];
 }

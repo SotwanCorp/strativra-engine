@@ -8,15 +8,27 @@
     "node": ">=22.6"
   },
   "scripts": {
-    "check": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test --test-reporter=spec \"src/**/*.test.ts\""
+    "check": "tsc --noEmit && tsc --noEmit -p src/extension",
+    "test": "node --experimental-strip-types --test --test-reporter=spec \"src/**/*.test.ts\"",
+    "worker": "node --experimental-strip-types --disable-warning=ExperimentalWarning src/worker/main.ts",
+    "ext:check": "tsc --noEmit -p src/extension",
+    "ext:build": "wxt build src/extension",
+    "ext:zip": "wxt zip src/extension",
+    "ext:dev": "wxt src/extension",
+    "test:extension": "STRV_E2E=1 wxt build src/extension && node --experimental-strip-types --disable-warning=ExperimentalWarning --test --test-reporter=spec \"src/extension/e2e/*.e2e.ts\""
   },
   "devDependencies": {
+    "@types/chrome": "0.3.4",
     "@types/node": "^22.20.5",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "7.3.7",
+    "wxt": "0.21.4"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.2.0",
     "@duckduckgo/autoconsent": "^16.60.0",
-    "playwright-core": "^1.64.1"
+    "@typesafe-ai/sdk": "^0.7.0",
+    "playwright-core": "^1.64.1",
+    "zod": "^4.6.7"
   }
 }

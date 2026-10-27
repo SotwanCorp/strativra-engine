@@ -1,0 +1,10 @@
+node_modules
+.git
+.env*
+data
+dist
+*.md
+!deploy/README.md
+deploy
+src/**/*.test.ts
+src/**/*.test-util.ts
