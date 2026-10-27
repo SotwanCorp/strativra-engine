@@ -89,8 +89,6 @@ export const S = {
   discard: "Discard",
   uploading: "Uploading",
   building: "Building your report",
-  tooLarge: "This recording is too large to upload. Record a shorter visit.",
-  interrupted: "A recording was interrupted. Review what was saved or discard it.",
 
   errors: {
     unauthorized: "That key was not accepted. Check it in Settings.",

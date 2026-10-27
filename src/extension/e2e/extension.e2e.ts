@@ -123,9 +123,10 @@ async function startShop(): Promise<{ origin: string; hits: Array<{ method: stri
       if (p === "/g/collect") return void res.writeHead(204).end();
       const file = routes[p];
       if (req.method !== "GET" || !file) return void res.writeHead(404).end("not found");
+      const port = req.socket.localPort;
       const html = (await readFile(SHOP + file, "utf8")).replace(
         "</body>",
-        `<script>window.dataLayer=window.dataLayer||[];dataLayer.push({event:"shop_view",email:"buyer@example.com"});navigator.sendBeacon("/g/collect?v=2&tid=G-SHOP&en=page_view","en=page_view");
+        `<img alt="" src="http://localhost:${port}/pixel.gif?p=${encodeURIComponent(p)}"><script>window.dataLayer=window.dataLayer||[];dataLayer.push({event:"shop_view",email:"buyer@example.com"});navigator.sendBeacon("/g/collect?v=2&tid=G-SHOP&en=page_view","en=page_view");
 document.getElementById("add")&&document.getElementById("add").addEventListener("click",function(){navigator.sendBeacon("/g/collect?v=2&tid=G-SHOP&en=add_to_cart","en=add_to_cart&ep.customer_email=buyer%40example.com")});</script></body>`,
       );
       res.writeHead(200, { "content-type": "text/html; charset=utf-8" }).end(html);
@@ -300,12 +301,14 @@ test("Mode B: fresh visitor, consent marker, lead steps, review, gzip upload, re
   assert.match(pvContact.url, /gcs=G111/);
   assert.ok(!ga.some((r) => r.ts < 0));
 
-  const hits = decodeAll(run.requests, "127.0.0.1");
-  const ga4 = hits.filter((h) => h.vendor === "ga4");
-  assert.deepEqual(
-    ga4.map((h) => `${h.eventName}:${h.phase}:${h.accountId}`).filter((s) => !s.startsWith("consent_denied")),
-    ["page_view:pre:G-TEST", "consent_granted:post:G-TEST", "page_view:post:G-TEST"],
-  );
+  // Each fixture hit is one request (no duplicates from the recorder).
+  assert.equal(ga.filter((r) => r === pv || (r.url.includes("en=page_view") && r.pageUrl.endsWith("/") && r.phase === "pre")).length, 1);
+  assert.equal(new Set(ga.map((r) => r.id)).size, ga.length);
+  // The engine decoder reads them as GA4 hits with the right phases. The fixture puts `en` in both the
+  // query and the body, which the decoder reads as two events of one request: compare per request.
+  const hits = decodeAll(run.requests, "127.0.0.1").filter((h) => h.vendor === "ga4");
+  const perRequest = [...new Map(hits.map((h) => [h.requestId, `${h.eventName}:${h.phase}:${h.accountId}`])).values()];
+  assert.deepEqual(perRequest, ["page_view:pre:G-TEST", "consent_granted:post:G-TEST", "page_view:post:G-TEST"]);
 
   // Non-tracking POSTs are recorded without their bodies; nothing was submitted.
   const lead = run.requests.find((r) => r.url.endsWith("/api/lead"));
@@ -373,6 +376,8 @@ test("Mode B as is: shop path, add-to-cart POST body never kept, host removed on
     await site.goto(`${shop.origin}/`);
     const tabId = await tabIdOf(shop.origin);
     const panel = await openPanel(tabId);
+    await view(panel, "home");
+    await panel.click("#record-b");
     await view(panel, "setup");
     await panel.check("#visitor-returning");
     await panel.check("#path-ecommerce");
@@ -394,6 +399,12 @@ test("Mode B as is: shop path, add-to-cart POST body never kept, host removed on
     await panel.click("#stop");
     await view(panel, "review");
     assert.match(await panel.textContent("#review-labels") ?? "", /No consent choice\. Returning visitor\./);
+    // A second host (the pixel on localhost) is listed and can be removed before anything is sent.
+    await panel.waitForSelector('[data-host="localhost"]');
+    const before = Number(await panel.textContent("#review-requests"));
+    await panel.click('[data-remove="localhost"]');
+    await panel.waitForSelector('[data-host="localhost"]', { state: "detached" });
+    assert.ok(Number(await panel.textContent("#review-requests")) < before);
 
     const reportPage = ctx.waitForEvent("page", { predicate: (p) => p.url().includes("/r/scn_up2"), timeout: 30_000 });
     await panel.click("#upload");
@@ -408,6 +419,8 @@ test("Mode B as is: shop path, add-to-cart POST body never kept, host removed on
     const atc = run.requests.find((r) => r.url.includes("en=add_to_cart"));
     assert.ok(atc?.postData?.includes("en=add_to_cart"));
     assert.ok(!JSON.stringify(env).includes("buyer"), "emails redacted");
+    assert.ok(!run.requests.some((r) => new URL(r.url).hostname === "localhost"), "removed host not uploaded");
+    assert.ok(shop.hits.some((h) => h.path === "/pixel.gif"), "the pixel did load");
     assert.deepEqual(env.guidedSteps.map((s) => [s.name, s.ok]), [["returning_visitor", true], ["view_item", true], ["add_to_cart", true], ["begin_checkout", false], ["stopped", true]]);
     const atcStep = env.guidedSteps.find((s) => s.name === "add_to_cart")!;
     assert.ok(Math.abs(atcStep.ts - atc!.ts) < 1000, "step time is the page click, not the button press");

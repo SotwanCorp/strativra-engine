@@ -385,11 +385,26 @@ async function act(m: PanelMessage) {
   render();
 }
 
+/** What changes the recording screen's layout. Counters and the clock are patched in place instead. */
+function recordingShape(s: Session | null): string {
+  return s ? [s.state, s.steps.length, s.marker?.choice, s.marker?.source, s.tabClosed].join("|") : "";
+}
+
 async function refreshStatus() {
   const r = await send<StatusData>({ type: "status" });
-  if (!r.ok || !r.data) return;
+  if (!r.ok || !r.data || ui.view !== "recording") return;
+  const before = recordingShape(ui.session);
   ui.session = r.data.session;
-  if (ui.view === "recording") render();
+  const s = ui.session;
+  if (!s || recordingShape(s) !== before) return render();
+  const set = (id: string, text: string) => {
+    const el = document.getElementById(id);
+    if (el && el.textContent !== text) el.textContent = text;
+  };
+  set("elapsed", elapsed(s.startedAt));
+  set("count-requests", String(s.counts.requests));
+  set("count-tracking", String(s.counts.tracking));
+  set("count-datalayer", String(s.counts.dataLayer));
 }
 
 async function startRecording() {
