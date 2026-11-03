@@ -126,6 +126,25 @@ export function tagsBeforeConsent(): { capture: Capture; hits: DecodedHit[] } {
   };
 }
 
+/* (b2) Advanced Consent Mode, as seen on a real scan: gtag library loads before a choice and after reject, every collect ping denied (gcs=G100). */
+export function advancedModeSite(): { capture: Capture; hits: DecodedHit[] } {
+  const site = "https://adv.example/";
+  const lib = (scenario: Scenario, phase: ConsentPhase) =>
+    hit({ vendor: "ga4", eventName: "tag_load", accountId: "G-ADV1", scenario, phase, pageUrl: site });
+  return {
+    capture: capture({ target: site }),
+    hits: [
+      lib("none", "pre"),
+      lib("reject", "pre"),
+      lib("reject", "post"),
+      lib("accept", "post"),
+      hit({ vendor: "ga4", eventName: "page_view", accountId: "G-ADV1", scenario: "none", phase: "pre", pageUrl: site, consent: consent("denied") }),
+      hit({ vendor: "ga4", eventName: "page_view", accountId: "G-ADV1", scenario: "reject", phase: "post", ts: 6000, pageUrl: "https://adv.example/about", consent: consent("denied") }),
+      hit({ vendor: "ga4", eventName: "page_view", accountId: "G-ADV1", scenario: "accept", phase: "post", ts: 3000, pageUrl: site, consent: consent("granted") }),
+    ],
+  };
+}
+
 /* (c) Shop: funnel walked, add_to_cart without currency, begin_checkout untracked, Meta without eventID. */
 export function shopSite(): { capture: Capture; hits: DecodedHit[] } {
   const p = "https://shop.example/product/mug";

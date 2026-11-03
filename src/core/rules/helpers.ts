@@ -65,6 +65,14 @@ export function isTracking(h: DecodedHit): boolean {
   return TRACKING_VENDORS.includes(h.vendor);
 }
 
+/** Script downloads (gtag/js, gtag/destination, gtm.js), not measurement requests. */
+export const LOADER_EVENTS: readonly string[] = ["tag_load", "container_load"];
+
+/** A tracking hit that sends measurement data (collect, conversion, pixel), not a library load. */
+export function isMeasurement(h: DecodedHit): boolean {
+  return isTracking(h) && !LOADER_EVENTS.includes(h.eventName);
+}
+
 export function hasConsentSignals(h: DecodedHit): boolean {
   return !!h.consent && (!!h.consent.raw.gcs || !!h.consent.raw.gcd);
 }
@@ -75,11 +83,13 @@ export function current(h: DecodedHit, key: ConsentKey): string | undefined {
 
 /**
  * Whether a hit effectively ran with storage granted.
+ * Library loads send no measurement data, so they never count.
  * Google hits with consent signals: ad_storage or analytics_storage current = granted.
  * Google hits with no signals: no Consent Mode, so the tag behaves as granted.
  * Non-Google vendors have no consent signal in the hit: firing at all counts.
  */
 export function effectivelyGranted(h: DecodedHit): boolean {
+  if (!isMeasurement(h)) return false;
   if (GOOGLE_VENDORS.includes(h.vendor)) {
     if (!hasConsentSignals(h)) return true;
     return current(h, "ad_storage") === "granted" || current(h, "analytics_storage") === "granted";
@@ -88,7 +98,7 @@ export function effectivelyGranted(h: DecodedHit): boolean {
     if (!hasConsentSignals(h)) return true;
     return current(h, "ad_storage") === "granted" || current(h, "analytics_storage") === "granted";
   }
-  return isTracking(h);
+  return true;
 }
 
 export function hitEvidence(h: DecodedHit, caption: string, extra?: Record<string, unknown>): Evidence {

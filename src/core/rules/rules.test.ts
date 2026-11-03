@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Finding } from "../../types.ts";
 import { RULES, runRules } from "./index.ts";
-import { capture, cleanSite, consent, hit, leadSite, req, run, shopSite, tagsBeforeConsent } from "./fixtures.ts";
+import { advancedModeSite, capture, cleanSite, consent, hit, leadSite, req, run, shopSite, tagsBeforeConsent } from "./fixtures.ts";
 import { CONTRACTS } from "../contracts.ts";
 import { hostOf } from "./helpers.ts";
 
@@ -31,6 +31,46 @@ test("(b) tags before consent", () => {
   assert.deepEqual(f.vendors.sort(), ["ga4", "meta"]);
   assert.ok(f.evidence.length >= 2 && f.evidence.every((e) => e.ref));
   assert.equal(byId(fs, "consent.cmp_without_consent_mode").severity, "high");
+});
+
+const CRITICAL_CONSENT = ["consent.fires_before_consent", "consent.granted_after_reject", "consent.no_banner"];
+
+test("advanced Consent Mode with denied pings is not critical", () => {
+  const fs = findings(advancedModeSite());
+  assert.ok(!fs.some((f) => CRITICAL_CONSENT.includes(f.id) || f.severity === "critical"), ids(fs).join(", "));
+  assert.deepEqual(ids(fs).filter((id) => id.startsWith("consent.")), []);
+});
+
+test("a tag library load alone is not data sent", () => {
+  const f = advancedModeSite();
+  f.hits = f.hits.filter((h) => h.eventName === "tag_load" || h.scenario === "accept");
+  const fs = findings(f);
+  assert.ok(!fs.some((x) => CRITICAL_CONSENT.includes(x.id) || x.severity === "critical"), ids(fs).join(", "));
+
+  const noBanner = findings({
+    capture: capture({ target: "https://adv.example/", scenarios: [run("none", "not_applicable"), run("accept", "no_banner"), run("reject", "no_banner")] }),
+    hits: [hit({ vendor: "ga4", eventName: "tag_load", accountId: "G-ADV1", scenario: "none", phase: "pre", pageUrl: "https://adv.example/" })],
+  });
+  assert.ok(!noBanner.some((x) => x.id === "consent.no_banner"));
+});
+
+test("a granted collect before a choice is still critical", () => {
+  const f = advancedModeSite();
+  f.hits.push(hit({ vendor: "ga4", eventName: "page_view", accountId: "G-ADV1", scenario: "none", phase: "pre", pageUrl: "https://adv.example/", consent: consent("granted") }));
+  const fs = findings(f);
+  const bad = byId(fs, "consent.fires_before_consent");
+  assert.equal(bad.severity, "critical");
+  assert.ok(bad.evidence.every((e) => (e.data as { event?: string }).event === "page_view"));
+});
+
+test("a granted collect after reject is still critical", () => {
+  const f = advancedModeSite();
+  f.hits.push(hit({ vendor: "ga4", eventName: "page_view", accountId: "G-ADV1", scenario: "reject", phase: "post", ts: 7000, pageUrl: "https://adv.example/about", consent: consent("granted") }));
+  const fs = findings(f);
+  const bad = byId(fs, "consent.granted_after_reject");
+  assert.equal(bad.severity, "critical");
+  assert.ok(bad.evidence.every((e) => (e.data as { event?: string }).event === "page_view"));
+  assert.ok(!fs.some((x) => x.id === "consent.fires_before_consent"));
 });
 
 test("(c) shop: missing currency, untracked begin_checkout, Meta without eventID", () => {
