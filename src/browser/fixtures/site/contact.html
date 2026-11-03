@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture Contact</title></head>
+<body>
+<h1>Contact us</h1>
+<form id="contact" method="post" action="/submit">
+  <label>Name <input name="name"></label>
+  <label>Email <input name="email" type="email"></label>
+  <textarea name="message"></textarea>
+  <button type="submit">Send</button>
+</form>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  dataLayer.push({ event: "contact_view" });
+  // An AJAX "lead" POST to a non-tracking endpoint (must be blocked).
+  fetch("/api/lead", { method: "POST", body: JSON.stringify({ probe: 1 }) }).catch(function () {});
+  // A payment-like POST (must be blocked as payment).
+  fetch("/cart/checkout", { method: "POST", body: "x=1" }).catch(function () {});
+  // A GA4 hit on the contact page (tracking POST, allowed).
+  var granted = /(?:^|; )fx_consent=granted/.test(document.cookie);
+  navigator.sendBeacon("/g/collect?v=2&tid=G-TEST&en=page_view&gcs=" + (granted ? "G111" : "G100"), "en=page_view");
+</script>
+</body>
+</html>

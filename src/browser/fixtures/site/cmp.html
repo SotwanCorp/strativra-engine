@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Fixture CMP (autoconsent rule cookiebot.be)</title>
+<style>
+  #cbPopupWrap { display: none; position: fixed; bottom: 0; left: 0; right: 0; background: #ddd; padding: 20px; }
+  #cbPopupWrap.cb-popup--open { display: block; }
+</style>
+</head>
+<body>
+<h1>CMP fixture</h1>
+<p>Markup that matches the generic autoconsent rule "cookiebot.be".</p>
+<div id="cbPopupWrap" class="cb-popup--open">
+  <p>This site uses cookies.</p>
+  <button id="cbAcceptTrigger">Accept</button>
+  <button id="cbRefuseTrigger">Refuse</button>
+</div>
+<script>
+  var wrap = document.getElementById("cbPopupWrap");
+  function done(v) { document.cookie = "cbDataAccepted=" + v + "; path=/"; wrap.classList.remove("cb-popup--open"); window.__fxChoice = v; }
+  document.getElementById("cbAcceptTrigger").addEventListener("click", function () { done("1"); });
+  document.getElementById("cbRefuseTrigger").addEventListener("click", function () { done("0"); });
+</script>
+</body>
+</html>

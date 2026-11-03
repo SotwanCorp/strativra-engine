@@ -4,3 +4,5 @@ data/
 *.sqlite
 .env
 .env.*
+.wxt/
+.output/

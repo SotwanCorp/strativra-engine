@@ -1,0 +1,11 @@
+{
+  "id": "ecommerce",
+  "name": "Shop checkout",
+  "conversionType": "purchase",
+  "steps": [
+    { "id": "view_item", "name": "view_item", "label": "Open a product page", "action": "Opened a product page", "at": "page_load", "conversionType": "purchase" },
+    { "id": "add_to_cart", "name": "add_to_cart", "label": "Add it to the cart", "action": "Added a product to the cart", "at": "click", "conversionType": "purchase" },
+    { "id": "begin_checkout", "name": "begin_checkout", "label": "Go to checkout", "action": "Went to checkout", "at": "any", "conversionType": "purchase" },
+    { "id": "stop", "name": "stopped", "label": "Stop before you submit or pay", "action": "Stopped before paying", "at": "now", "final": true }
+  ]
+}

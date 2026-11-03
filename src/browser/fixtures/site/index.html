@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fixture Home</title>
+<meta name="generator" content="WordPress 6.6">
+<style>
+  #cookie-banner { position: fixed; bottom: 0; left: 0; right: 0; padding: 16px; background: #eee; }
+  #cookie-banner.hidden { display: none; }
+</style>
+<script>
+  // Fake gtag consent state (what google_tag_data.ics looks like at runtime).
+  function consentCookie() { var m = document.cookie.match(/(?:^|; )fx_consent=(\w+)/); return m ? m[1] : null; }
+  var c = consentCookie();
+  window.google_tag_data = { ics: { entries: {
+    ad_storage: { default: false, update: c === "granted" ? true : c === "denied" ? false : undefined },
+    analytics_storage: { default: false, update: c === "granted" ? true : c === "denied" ? false : undefined }
+  } } };
+  window.dataLayer = window.dataLayer || [];
+  dataLayer.push({ event: "page_meta", user_email: "jane.doe@example.com", phone: "+33 6 12 34 56 78", order: 42 });
+  function hit(en, gcs) {
+    navigator.sendBeacon("/g/collect?v=2&tid=G-TEST&en=" + en + "&gcs=" + gcs, "en=" + en);
+  }
+  hit("page_view", c === "granted" ? "G111" : "G100");
+</script>
+</head>
+<body>
+<h1>Fixture home</h1>
+<a href="/contact.html">Contact</a>
+<a href="/about.html">About</a>
+<div id="cookie-banner" class="hidden" role="dialog" aria-label="Cookie consent">
+  <p>We use cookies for analytics and ads.</p>
+  <button id="acc" type="button">Accept all</button>
+  <button id="rej" type="button">Reject all</button>
+</div>
+<script>
+  var banner = document.getElementById("cookie-banner");
+  if (!consentCookie()) banner.classList.remove("hidden");
+  function decide(v) {
+    document.cookie = "fx_consent=" + v + "; path=/";
+    window.google_tag_data.ics.entries.ad_storage.update = v === "granted";
+    window.google_tag_data.ics.entries.analytics_storage.update = v === "granted";
+    dataLayer.push({ event: "consent_update", value: v });
+    banner.classList.add("hidden");
+    hit(v === "granted" ? "consent_granted" : "consent_denied", v === "granted" ? "G111" : "G100");
+  }
+  document.getElementById("acc").addEventListener("click", function () { decide("granted"); });
+  document.getElementById("rej").addEventListener("click", function () { decide("denied"); });
+</script>
+</body>
+</html>
