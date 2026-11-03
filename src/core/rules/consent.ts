@@ -7,7 +7,7 @@ import {
   effectivelyGranted,
   hasConsentSignals,
   hitEvidence,
-  isTracking,
+  isMeasurement,
   normUrl,
   note,
   reachFrom,
@@ -40,7 +40,7 @@ const firesBeforeConsent: Rule = {
   appliesTo: (ctx) => bannerSeen(ctx),
   run(ctx) {
     const bad = ctx.hits.filter(
-      (h) => isTracking(h) && h.phase === "pre" && (h.scenario === "none" || h.scenario === "reject") && effectivelyGranted(h),
+      (h) => isMeasurement(h) && h.phase === "pre" && (h.scenario === "none" || h.scenario === "reject") && effectivelyGranted(h),
     );
     if (bad.length === 0) return [];
     const pages = uniq(bad.map((h) => normUrl(h.pageUrl))).length;
@@ -76,7 +76,7 @@ const grantedAfterReject: Rule = {
   id: "consent.granted_after_reject",
   appliesTo: (ctx) => scenario(ctx, "reject")?.banner === "clicked",
   run(ctx) {
-    const bad = ctx.hits.filter((h) => isTracking(h) && h.scenario === "reject" && h.phase === "post" && effectivelyGranted(h));
+    const bad = ctx.hits.filter((h) => isMeasurement(h) && h.scenario === "reject" && h.phase === "post" && effectivelyGranted(h));
     if (bad.length === 0) return [];
     const pages = uniq(bad.map((h) => normUrl(h.pageUrl))).length;
     return [
@@ -188,7 +188,7 @@ const cmpWithoutConsentMode: Rule = {
   id: "consent.cmp_without_consent_mode",
   appliesTo: (ctx) => bannerSeen(ctx),
   run(ctx) {
-    const google = ctx.hits.filter((h) => GOOGLE_VENDORS.includes(h.vendor));
+    const google = ctx.hits.filter((h) => GOOGLE_VENDORS.includes(h.vendor) && isMeasurement(h));
     if (google.length === 0 || google.some(hasConsentSignals)) return [];
     const cmp = ctx.capture.scenarios.find((r) => r.cmp)?.cmp;
     return [
@@ -222,7 +222,7 @@ const noBanner: Rule = {
   id: "consent.no_banner",
   appliesTo: (ctx) => noBannerAnywhere(ctx),
   run(ctx) {
-    const tracking = ctx.hits.filter((h) => isTracking(h) && effectivelyGranted(h));
+    const tracking = ctx.hits.filter((h) => isMeasurement(h) && effectivelyGranted(h));
     if (tracking.length === 0) return [];
     return [
       {
